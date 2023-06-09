@@ -1,0 +1,6 @@
+{
+  "asterisk_host": "127.0.0.1",
+  "asterisk_port": "8088",
+  "asterisk_login": "asterisk",
+  "asterisk_password": "asterisk"
+}
