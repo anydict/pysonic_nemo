@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import sys
+import threading
 
 import uvicorn
 from fastapi import FastAPI
@@ -80,8 +81,12 @@ if __name__ == "__main__":
         logger.info(f"API bind address: {config.app_api_host}:{config.app_api_port}")
 
         # Start FastAPI and our application through on_event startup
-        uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=True)
+        uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=False)
 
         logger.info(f"Shutting down")
+
+        for thread in threading.enumerate():
+            if hasattr(thread, "stop"):
+                thread.stop()
     except KeyboardInterrupt:
         logger.debug(f"User aborted through keyboard")

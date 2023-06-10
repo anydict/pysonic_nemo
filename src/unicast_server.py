@@ -17,19 +17,33 @@ class UnicastServer(threading.Thread):
         self.queue_packages: list = queue_packages
         self.config: Config = config
         self.log = logger.bind(object_id='unicast_server')
+        self._stop_event = threading.Event()
+        self.server_socket = None
+
+    def start(self) -> None:
+        # This class use threading
+        super().start()
+        # function self.run in new Thread
+
+    def stop(self):
+        self.log.debug('go stop')
+        self._stop_event.set()
 
     def run(self):
         self.log.debug(f'run UnicastServer on address={self.unicast_host}:{self.unicast_port}')
 
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server_socket.bind((self.unicast_host, self.unicast_port))
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server_socket.bind((self.unicast_host, self.unicast_port))
+        self.server_socket.settimeout(1)
 
-        while self.config.shutdown is False:
+        while not self._stop_event.is_set():
             try:
-                data, addr = server_socket.recvfrom(self.app_unicast_buffer_size)
+                data, addr = self.server_socket.recvfrom(self.app_unicast_buffer_size)
                 self.queue_packages.append(data)
                 self.log.debug(addr)
                 self.log.debug(len(self.queue_packages))
+            except socket.timeout:
+                pass
             except socket.error as e:
                 self.log.error(e)
 
