@@ -7,7 +7,9 @@ class Config(object):
                'alive': True,
                'shutdown': False,
                'app_unicast_host': '127.0.0.1',
-               'app_unicast_port': 8088
+               'app_unicast_port': 1234,
+               'app_unicast_protocol': 'udp',
+               'app_unicast_buffer_size': 1024
                }
 
     def __init__(self, join_config: dict):
@@ -23,6 +25,8 @@ class Config(object):
         self.app_api_port: int = int(self.new_config['app_api_port'])
         self.app_unicast_host: str = str(self.new_config['app_unicast_host'])
         self.app_unicast_port: int = int(self.new_config['app_unicast_port'])
+        self.app_unicast_protocol: str = str(self.new_config['app_unicast_protocol'])
+        self.app_unicast_buffer_size: int = int(self.new_config['app_unicast_buffer_size'])
 
 
 if __name__ == "__main__":

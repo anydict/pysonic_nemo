@@ -1,9 +1,11 @@
 import asyncio
 import os
+from typing import Union
 
 from loguru import logger
 
 from src.config import Config
+from src.unicast_server import UnicastServer
 
 
 class Manager(object):
@@ -12,6 +14,7 @@ class Manager(object):
     def __init__(self, config: Config, app: str):
         self.config: Config = config
         self.queue_packages = []
+        self.unicast_server: Union[UnicastServer, None] = None
         self.app = app
         self.log = logger.bind(object_id='manager')
 
@@ -26,11 +29,17 @@ class Manager(object):
     async def start_manager(self):
         self.log.info('start_manager')
 
+        self.unicast_server = UnicastServer(self.config, self.queue_packages)
+        self.unicast_server.start()
+
         # run new call until receive "restart" request (see api/routes.py)
         while self.config.shutdown is False:
             if len(self.queue_packages) == 0:
                 await asyncio.sleep(0.1)
                 continue
+
+            package = self.queue_packages.pop(0)
+            # self.log.info(package)
 
             # lead = self.queue_lead.pop(0)  # get and remove first lead from queue
             # raw_dialplan = self.get_raw_dialplan(lead.dialplan_name)
