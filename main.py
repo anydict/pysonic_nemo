@@ -50,7 +50,7 @@ if os.path.isfile('config.json'):
 
 config = Config(join_config=join_config)
 app = FastAPI()
-manager = Manager(config=config, app=config.app)
+manager = Manager(config=config)
 routers = Routers(config=config, manager=manager)
 
 
@@ -79,6 +79,7 @@ if __name__ == "__main__":
         logger.info(f"Parent pid: {os.getppid()}")
         logger.info(f"Current pid: {os.getpid()}")
         logger.info(f"API bind address: {config.app_api_host}:{config.app_api_port}")
+        logger.info(f"UnicastServer bind address: {config.app_unicast_host}:{config.app_unicast_port}")
 
         # Start FastAPI and our application through on_event startup
         uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=False)
