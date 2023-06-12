@@ -9,7 +9,8 @@ class Config(object):
                'app_unicast_host': '127.0.0.1',
                'app_unicast_port': 1234,
                'app_unicast_protocol': 'udp',
-               'app_unicast_buffer_size': 1024
+               'app_unicast_buffer_size': 1024,
+               'first_noise_answer_threshold': 250
                }
 
     def __init__(self, join_config: dict):
@@ -27,6 +28,8 @@ class Config(object):
         self.app_unicast_port: int = int(self.new_config['app_unicast_port'])
         self.app_unicast_protocol: str = str(self.new_config['app_unicast_protocol'])
         self.app_unicast_buffer_size: int = int(self.new_config['app_unicast_buffer_size'])
+
+        self.first_noise_answer_threshold: int = int(self.new_config['first_noise_answer_threshold'])
 
 
 if __name__ == "__main__":

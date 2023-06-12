@@ -45,25 +45,15 @@ class Manager(object):
 
             package = self.queue_packages.pop(0)
 
-            key_for_dict = f'{package.ssrc}@{package.unicast_host}{package.unicast_port}'
-            if key_for_dict not in self.audio_packages:
-                audiopackage = AudioPackages(config=self.config,
-                                             unicast_host=package.unicast_host,
-                                             unicast_port=package.unicast_port)
+            ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
+            if ssrc_host_port not in self.audio_packages:
+                audio_packages = AudioPackages(config=self.config,
+                                               unicast_host=package.unicast_host,
+                                               unicast_port=package.unicast_port,
+                                               ssrc_host_port=ssrc_host_port)
 
-                self.audio_packages[key_for_dict] = audiopackage
+                self.audio_packages[ssrc_host_port] = audio_packages
 
-            if key_for_dict in self.audio_packages:
-                self.log.info('HEHE HAHA')
-                self.log.info(key_for_dict)
-                self.audio_packages[key_for_dict].packages.append(package)
-                self.log.info(len(self.audio_packages[key_for_dict].packages))
-
-        # full stop app
-        self.unicast_server.join()
-        self.config.alive = False
-        # close FastAPI and our app
-        parent_pid = os.getppid()
-        current_pid = os.getpid()
-        os.kill(parent_pid, 9)
-        os.kill(current_pid, 9)
+            if ssrc_host_port in self.audio_packages:
+                audio_packages = self.audio_packages[ssrc_host_port]
+                audio_packages.append_package_for_analyse(package)

@@ -84,6 +84,8 @@ if __name__ == "__main__":
         # Start FastAPI and our application through on_event startup
         uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=False)
 
+        config.shutdown = False
+        config.alive = False
         logger.info(f"Shutting down")
 
         for thread in threading.enumerate():
