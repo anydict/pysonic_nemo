@@ -6,7 +6,9 @@ import sys
 import threading
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.middleware.cors import CORSMiddleware
 
@@ -67,6 +69,29 @@ app.add_middleware(CORSMiddleware,
                    allow_methods=["*"],
                    allow_headers=["*"])
 app.include_router(routers.router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for error in exc.errors():
+        errors.append({
+            'loc': error['loc'],
+            'msg': error['msg'],
+            'type': error['type']
+        })
+    logger.error(f"ValidationError in path: {request.url.path}")
+    logger.error(f"ValidationError detail: {errors}")
+    logger.error(request.headers)
+
+    request_body = await request.body()
+    logger.error(request_body)
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=errors[0] if len(errors) > 0 else {"msg": "invalid request"}
+    )
+
 
 if __name__ == "__main__":
     try:

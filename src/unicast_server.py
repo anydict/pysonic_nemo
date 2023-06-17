@@ -1,6 +1,5 @@
 import socket
 import threading
-from datetime import datetime
 
 from loguru import logger
 from src.config import Config
@@ -40,7 +39,7 @@ class UnicastServer(threading.Thread):
         while not self._stop_event.is_set():
             try:
                 data, addr = self.server_socket.recvfrom(self.app_unicast_buffer_size)
-                package = Package(addr[0], addr[1], data, datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f'))
+                package = Package(addr[0], addr[1], data)
                 self.queue_packages.append(package)
                 if len(self.queue_packages) > self.peak_packages + 10:
                     self.peak_packages = len(self.queue_packages)
