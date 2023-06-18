@@ -1,5 +1,6 @@
 import asyncio
 import json
+import multiprocessing
 import os
 import platform
 import sys
@@ -68,6 +69,7 @@ app.add_middleware(CORSMiddleware,
                    allow_credentials=True,
                    allow_methods=["*"],
                    allow_headers=["*"])
+
 app.include_router(routers.router)
 
 
@@ -109,12 +111,18 @@ if __name__ == "__main__":
         # Start FastAPI and our application through on_event startup
         uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=False)
 
-        config.shutdown = False
-        config.alive = False
-        logger.info(f"Shutting down")
+        for children in multiprocessing.active_children():
+            if hasattr(children, 'kill'):
+                children.kill()
 
         for thread in threading.enumerate():
-            if hasattr(thread, "stop"):
+            if hasattr(thread, 'stop'):
                 thread.stop()
+
+        logger.info(f"Shutting down")
+
     except KeyboardInterrupt:
-        logger.debug(f"User aborted through keyboard")
+        logger.error(f"User aborted through keyboard")
+    except Exception as exc:
+        logger.error(exc)
+        logger.exception(exc)

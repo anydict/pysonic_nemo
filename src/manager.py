@@ -1,5 +1,7 @@
 import asyncio
+import multiprocessing
 from datetime import datetime, timedelta
+from queue import Empty
 from typing import Union
 
 from loguru import logger
@@ -17,11 +19,13 @@ class Manager(object):
     def __init__(self, config: Config):
         self.config: Config = config
         self.queue_packages: list[Package] = []
+        self.mp_queue = multiprocessing.Queue()
         self.unicast_server: Union[UnicastServer, None] = None
         self.chans: list[AudioPackages] = []
         self.app = config.app
         self.log = logger.bind(object_id='manager')
         self.audio_packages: dict[str, AudioPackages] = {}
+        self.stress_peak: int = 0
 
     def __del__(self):
         self.log.debug('object has died')
@@ -34,19 +38,27 @@ class Manager(object):
     async def start_manager(self):
         self.log.info('start_manager')
 
-        self.unicast_server = UnicastServer(self.config, self.queue_packages)
-        self.unicast_server.start()
+        self.unicast_server = UnicastServer(self.config, self.mp_queue)
 
         while self.config.shutdown is False:
+            self.queue_packages = []
+            try:
+                item = self.mp_queue.get_nowait()
+                self.queue_packages.extend(item)
+            except Empty:
+                pass
+
             len_queue = len(self.queue_packages)
+
             if len_queue == 0:
                 await asyncio.sleep(0.2)
                 continue
 
-            packages = self.queue_packages[0:len_queue]
-            del self.queue_packages[0:len_queue]
+            if len_queue > self.stress_peak + 5:
+                self.stress_peak = len_queue
+                self.log.debug(f'update stress peak={self.stress_peak}')
 
-            for package in packages:
+            for package in self.queue_packages:
                 ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
                 if ssrc_host_port not in self.audio_packages:
                     self.log.info(f'New AudioPackages {ssrc_host_port}')
@@ -63,6 +75,7 @@ class Manager(object):
                 elif ssrc_host_port in self.audio_packages:
                     audio_packages = self.audio_packages[ssrc_host_port]
                     audio_packages.append_package_for_analyse(package)
+            await asyncio.sleep(0)
 
     async def start_event_create(self, event: http_models.EventCreate) -> str:
         self.log.info(f'event_name={event.event_name} and druid={event.druid}')

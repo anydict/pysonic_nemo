@@ -89,9 +89,16 @@ class AudioPackages(threading.Thread):
     def add_event_destroy(self, event: http_models.EventDestroy):
         self.event_destroy = event
 
+    def stop(self):
+        self.log.debug('go stop')
+        self.config.alive = False
+
     def run(self):
         try:
             while self.break_while_time == '':
+                if self.config.alive is False:
+                    return
+
                 if self.check_end():
                     self.start_parse()
                     self.break_while_time = datetime.now().isoformat()
@@ -120,6 +127,7 @@ class AudioPackages(threading.Thread):
 
     def check_end(self):
         if self.event_destroy is not None:
+            time.sleep(1)
             return True
 
         elif (datetime.now() - self.time_add_last_package).total_seconds() > 10:
@@ -134,7 +142,11 @@ class AudioPackages(threading.Thread):
             return False
 
     def start_parse(self):
-        number_samples = int(self.length_payload / self.event_create.info.em_sample_width)
+        if self.event_create is None:
+            self.log.error('event_create not found')
+            number_samples = int(self.length_payload / 2)
+        else:
+            number_samples = int(self.length_payload / self.event_create.info.em_sample_width)
 
         while len(self.packages_for_analyse) > 0:
             package = self.packages_for_analyse.pop(0)
