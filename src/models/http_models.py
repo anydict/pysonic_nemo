@@ -18,7 +18,7 @@ class EventCreate(BaseModel):
         em_codec: str
         em_wait_seconds: int
         em_sample_rate: int
-        em_bit_rate: int
+        em_sample_width: int
         save_record: int
         save_format: str
         save_sample_rate: int

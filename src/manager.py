@@ -38,26 +38,31 @@ class Manager(object):
         self.unicast_server.start()
 
         while self.config.shutdown is False:
-
-            if len(self.queue_packages) == 0:
-                await asyncio.sleep(0.1)
+            len_queue = len(self.queue_packages)
+            if len_queue == 0:
+                await asyncio.sleep(0.2)
                 continue
 
-            package = self.queue_packages.pop(0)
+            packages = self.queue_packages[0:len_queue]
+            del self.queue_packages[0:len_queue]
 
-            ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
-            if ssrc_host_port not in self.audio_packages:
-                self.log.info(f'New AudioPackages {ssrc_host_port}')
-                audio_packages = AudioPackages(config=self.config,
-                                               em_host=package.unicast_host,
-                                               em_port=package.unicast_port,
-                                               em_ssrc=package.ssrc)
+            for package in packages:
+                ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
+                if ssrc_host_port not in self.audio_packages:
+                    self.log.info(f'New AudioPackages {ssrc_host_port}')
+                    audio_packages = AudioPackages(config=self.config,
+                                                   em_host=package.unicast_host,
+                                                   em_port=package.unicast_port,
+                                                   em_ssrc=package.ssrc,
+                                                   first_seq_num=package.seq_num,
+                                                   length_payload=len(package.payload))
+                    audio_packages.start()
+                    audio_packages.append_package_for_analyse(package)
+                    self.audio_packages[ssrc_host_port] = audio_packages
 
-                self.audio_packages[ssrc_host_port] = audio_packages
-
-            if ssrc_host_port in self.audio_packages:
-                audio_packages = self.audio_packages[ssrc_host_port]
-                audio_packages.append_package_for_analyse(package)
+                elif ssrc_host_port in self.audio_packages:
+                    audio_packages = self.audio_packages[ssrc_host_port]
+                    audio_packages.append_package_for_analyse(package)
 
     async def start_event_create(self, event: http_models.EventCreate) -> str:
         self.log.info(f'event_name={event.event_name} and druid={event.druid}')

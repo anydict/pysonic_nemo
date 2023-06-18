@@ -1,5 +1,6 @@
 import threading
 import time
+import wave
 from datetime import datetime
 from typing import Optional
 
@@ -7,7 +8,7 @@ from loguru import logger
 
 from src.config import Config
 from src.dataclasses.package import Package
-from struct import unpack
+from struct import unpack, pack
 import src.models.http_models as http_models
 
 
@@ -16,7 +17,9 @@ class AudioPackages(threading.Thread):
                  config: Config,
                  em_host: str,
                  em_port: int,
-                 em_ssrc: int
+                 em_ssrc: int,
+                 first_seq_num: int,
+                 length_payload: int
                  ):
         threading.Thread.__init__(self)
         self.config: Config = config
@@ -44,13 +47,14 @@ class AudioPackages(threading.Thread):
         self.time_add_first_package: datetime = datetime.now()
         self.time_add_last_package: datetime = datetime.now()
 
-        self.seq_num_first_package: int = -99
-        self.seq_num_last_package: int = -99
+        self.seq_num_first_package: int = first_seq_num
+        self.seq_num_last_package: int = first_seq_num
+        self.length_payload = length_payload
 
         self.wrap_around_coefficient: int = 1
 
-        self.first_beep_threshold: int = 650
-        self.first_beep_time: str = ''
+        self.first_beep_threshold: int = 9999
+        self.first_beep_seq_num: int = -1
 
         self.first_noise_answer_threshold: int = 90  # config.first_noise_answer_threshold
         self.first_noise_after_answer_time: str = ''
@@ -64,12 +68,8 @@ class AudioPackages(threading.Thread):
         self.log = logger.bind(object_id=f'{em_ssrc}@{em_host}:{em_port}')
         self.log.debug('init AudioPackages')
 
-        self.start()
-
     def append_package_for_analyse(self, package: Package):
-        if self.seq_num_first_package == -99:
-            self.seq_num_first_package = package.seq_num
-        self.time_add_last_package = datetime.now()
+        self.time_add_last_package: datetime = datetime.now()
 
         self.packages_for_analyse.append(package)
 
@@ -93,16 +93,19 @@ class AudioPackages(threading.Thread):
         try:
             while self.break_while_time == '':
                 if self.check_end():
+                    self.start_parse()
                     self.break_while_time = datetime.now().isoformat()
+
+                if self.event_create is None:
+                    time.sleep(0.3)
+                    continue
 
                 self.start_parse()
 
-                if self.event_answer is None:
-                    self.log.info('self.event_answer is None')
-                    self.first_beep_time = self.find_first_beep_time()
+                if self.first_beep_seq_num < 0:
+                    self.first_beep_seq_num = self.find_first_beep_time()
 
                 if self.event_answer is not None:
-                    self.log.info('self.event_answer is not None')
                     self.first_noise_after_answer_time = self.find_first_noise_after_answer_time()
                     self.first_voice_time = self.find_first_voice_time()
                     self.flag_absolute_silence = self.find_absolute_silence()
@@ -111,12 +114,15 @@ class AudioPackages(threading.Thread):
         except Exception as e:
             self.log.error(e)
             self.log.exception(e)
+            return
+
+        self.start_save()
 
     def check_end(self):
         if self.event_destroy is not None:
             return True
 
-        elif (datetime.now() - self.time_add_last_package).total_seconds() > 3:
+        elif (datetime.now() - self.time_add_last_package).total_seconds() > 10:
             self.log.error('new packages are not received and event_destroy not found')
             return True
 
@@ -128,38 +134,41 @@ class AudioPackages(threading.Thread):
             return False
 
     def start_parse(self):
-        number_samples = 320
-        old_wrap_around_coefficient = self.wrap_around_coefficient
+        number_samples = int(self.length_payload / self.event_create.info.em_sample_width)
+
         while len(self.packages_for_analyse) > 0:
             package = self.packages_for_analyse.pop(0)
-            if package.seq_num < 10 and package.seq_num < self.seq_num_first_package:
-                self.wrap_around_coefficient = old_wrap_around_coefficient + 1
+            if package.seq_num < 20 and package.seq_num < self.seq_num_first_package:
+                self.wrap_around_coefficient = 1 + round(self.seq_num_last_package / 65535)
+                self.log.error(f'FIND wrap_around={self.wrap_around_coefficient}')
 
             fix_seq_num = self.wrap_around_coefficient * package.seq_num
-            self.analyzed_samples[fix_seq_num] = list(unpack(">" + "H" * number_samples, package.payload))
+            self.analyzed_samples[fix_seq_num] = list(unpack(">" + "h" * number_samples, package.payload))
             self.max_amplitude_analyzed_samples[fix_seq_num] = max(self.analyzed_samples[fix_seq_num])
 
             if self.seq_num_last_package < fix_seq_num:
                 self.seq_num_last_package = fix_seq_num
 
-        if len(self.analyzed_samples) == self.seq_num_last_package - self.seq_num_first_package:
-            self.log.info('all packages have arrived')
-            return
+        # if len(self.analyzed_samples) == self.seq_num_last_package - self.seq_num_first_package + 1:
+        #     return
 
-        for seq_num in range(self.seq_num_first_package, self.seq_num_last_package):
-            if seq_num not in self.analyzed_samples:
-                self.log.warning('Find loss package!')
-                self.analyzed_samples[seq_num] = [0] * number_samples
-                self.max_amplitude_analyzed_samples[seq_num] = 0
+        # for seq_num in range(self.seq_num_first_package, self.seq_num_last_package):
+        #     if seq_num not in self.analyzed_samples:
+        #         self.log.error(f'Find loss package! {seq_num}')
+        #         self.analyzed_samples[seq_num] = [0] * number_samples
+        #         self.max_amplitude_analyzed_samples[seq_num] = 0
 
     def find_first_beep_time(self):
-        if self.first_beep_time != '':
-            return self.first_beep_time
+        if self.first_beep_seq_num > 0:
+            return self.first_beep_seq_num
 
-        for seq_num in self.max_amplitude_analyzed_samples:
+        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        for seq_num in sorted_seq_num:
             if self.max_amplitude_analyzed_samples[seq_num] > self.first_beep_threshold:
-                return datetime.now().isoformat()
-        return ''
+                self.log.debug(f'find_first_beep_time seq_num={seq_num}')
+                return seq_num
+
+        return self.first_beep_seq_num
 
     def find_first_noise_after_answer_time(self):
         if self.first_noise_after_answer_time != '':
@@ -167,17 +176,6 @@ class AudioPackages(threading.Thread):
 
         if self.event_answer is None:
             return ''
-
-        self.log.debug(f'self.event_create.event_time={self.event_create.event_time}')
-        self.log.debug(f'self.event_answer.event_time={self.event_answer.event_time}')
-
-        event_create_datetime = datetime.fromisoformat(self.event_create.event_time)
-        event_answer_datetime = datetime.fromisoformat(self.event_answer.event_time)
-
-        diff = event_answer_datetime - event_create_datetime
-
-        self.log.info('Diff time:')
-        self.log.info(diff)
 
         for seq_num in self.analyzed_samples:
             if self.analyzed_samples[seq_num][0] > 0:
@@ -194,7 +192,7 @@ class AudioPackages(threading.Thread):
         return ''
 
     def find_absolute_silence(self):
-        if self.first_beep_time != '':
+        if self.first_beep_seq_num > 0:
             return 0
         elif self.first_noise_after_answer_time != '':
             return 0
@@ -206,5 +204,31 @@ class AudioPackages(threading.Thread):
         return 0
 
     def start_save(self):
-        self.log.info('start_save')
-        pass
+        try:
+            self.log.info('start_save')
+            self.log.info(f'self.first_beep_seq_num={self.first_beep_seq_num}')
+            self.log.info(f' self.seq_num_first_package={self.seq_num_first_package}')
+            self.log.info(f' self.seq_num_last_package={self.seq_num_last_package}')
+            self.log.info(f' len packs={len(self.max_amplitude_analyzed_samples)}')
+            self.log.info(f' len raw packs={len(self.packages_for_analyse)}')
+            time.sleep(1)
+
+            if len(self.packages_for_analyse) > 0:
+                self.log.error(f'len={len(self.packages_for_analyse)}')
+
+            if self.seq_num_last_package - self.seq_num_first_package + 1 != len(self.max_amplitude_analyzed_samples):
+                self.log.error('found loss packs')
+
+            if self.event_create is None or self.event_create.info.save_record == 1:
+                with wave.open(f'audio{self.em_ssrc}.wav', 'wb') as f:
+                    f.setnchannels(1)  # mono
+                    f.setsampwidth(2)  # 16-bit
+                    f.setframerate(16000)  # 16 kHz
+
+                    for seq_num in self.analyzed_samples:
+                        for amp in self.analyzed_samples[seq_num]:
+                            data = pack('<h', amp)
+                            f.writeframes(data)
+        except Exception as exc:
+            self.log.error(exc)
+            self.log.exception(exc)
