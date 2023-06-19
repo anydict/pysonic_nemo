@@ -1,9 +1,11 @@
 FROM python:3.10-slim-buster
 
-LABEL version=1.0.0
-
 # Установка git
 RUN apt-get update && apt-get install -y --no-install-recommends git
+
+LABEL version=1.0.4
+EXPOSE 7005
+EXPOSE 1234
 
 RUN mkdir -p /opt/pysonic_nemo
 WORKDIR /opt/pysonic_nemo

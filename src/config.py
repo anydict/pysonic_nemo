@@ -3,7 +3,7 @@ class Config(object):
 
     default = {'app': 'pysonic',
                'app_api_host': '127.0.0.1',
-               'app_api_port': 8005,
+               'app_api_port': 7005,
                'alive': True,
                'shutdown': False,
                'app_unicast_host': '127.0.0.1',
