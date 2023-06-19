@@ -49,6 +49,7 @@ class AudioPackages(threading.Thread):
 
         self.seq_num_first_package: int = first_seq_num
         self.seq_num_last_package: int = first_seq_num
+        self.seq_num_answer_package: int = -1
         self.length_payload = length_payload
 
         self.wrap_around_coefficient: int = 1
@@ -82,6 +83,13 @@ class AudioPackages(threading.Thread):
 
     def add_event_answer(self, event: http_models.EventAnswer):
         self.event_answer = event
+        if self.event_create is not None:
+            create_datetime = datetime.fromisoformat(self.event_create.event_time)
+            answer_datetime = datetime.fromisoformat(event.event_time)
+            duration_before_answer = (answer_datetime - create_datetime).total_seconds()
+            duration_one_sample = self.length_payload / self.event_create.info.em_sample_width / self.event_create.info.em_sample_rate
+            number_samples_before_answer = duration_before_answer / duration_one_sample
+            self.seq_num_answer_package: int = int(self.seq_num_first_package + number_samples_before_answer)
 
     def add_event_detect(self, event: http_models.EventDetect):
         self.events_detect.append(event)
@@ -171,11 +179,14 @@ class AudioPackages(threading.Thread):
         #         self.max_amplitude_analyzed_samples[seq_num] = 0
 
     def find_first_beep_time(self):
-        if self.first_beep_seq_num > 0:
+        if self.first_beep_seq_num >= 0:
             return self.first_beep_seq_num
 
         sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
         for seq_num in sorted_seq_num:
+            if self.seq_num_answer_package > 0 and seq_num >= self.seq_num_answer_package:
+                self.log.warning(f'find answer, but not found beep!')
+                return 0
             if self.max_amplitude_analyzed_samples[seq_num] > self.first_beep_threshold:
                 self.log.debug(f'find_first_beep_time seq_num={seq_num}')
                 return seq_num
@@ -219,6 +230,7 @@ class AudioPackages(threading.Thread):
         try:
             self.log.info('start_save')
             self.log.info(f'self.first_beep_seq_num={self.first_beep_seq_num}')
+            self.log.info(f' self.seq_num_answer_package={self.seq_num_answer_package}')
             self.log.info(f' self.seq_num_first_package={self.seq_num_first_package}')
             self.log.info(f' self.seq_num_last_package={self.seq_num_last_package}')
             self.log.info(f' len packs={len(self.max_amplitude_analyzed_samples)}')

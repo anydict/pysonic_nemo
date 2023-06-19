@@ -117,6 +117,7 @@ class Manager(object):
             audio_packages.add_event_answer(event)
             return True
         else:
+            self.log.error(f'ssrc_host_port={ssrc_host_port} not found')
             return False
 
     async def start_event_detect(self, event: http_models.EventDetect) -> bool:
