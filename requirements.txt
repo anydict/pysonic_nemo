@@ -2,6 +2,5 @@ loguru==0.7.0
 aiohttp~=3.8.4
 fastapi~=0.96.0
 uvicorn~=0.22.0
-starlette~=0.28.0
+starlette
 pydantic~=1.10.7
-pydub~=0.25.1
