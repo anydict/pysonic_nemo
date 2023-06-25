@@ -7,7 +7,7 @@ import sys
 import threading
 
 import uvicorn
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -70,13 +70,25 @@ app.add_middleware(CORSMiddleware,
                    allow_methods=["*"],
                    allow_headers=["*"])
 
-app.include_router(routers.router)
+
+async def logging_dependency(request: Request):
+    druid = request.headers.get('druid')
+    logger.debug(f"druid={druid} {request.method} {request.url}")
+    logger.debug(f"druid={druid} Params:")
+    for name, value in request.path_params.items():
+        logger.debug(f"druid={druid}\t{name}: {value}")
+    logger.debug(f"druid={druid} Headers:")
+    for name, value in request.headers.items():
+        logger.debug(f"druid={druid}\t{name}: {value}")
+
+
+app.include_router(routers.router, dependencies=[Depends(logging_dependency)])
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(request: Request, e: RequestValidationError):
     errors = []
-    for error in exc.errors():
+    for error in e.errors():
         errors.append({
             'loc': error['loc'],
             'msg': error['msg'],
@@ -108,8 +120,16 @@ if __name__ == "__main__":
         logger.info(f"API bind address: {config.app_api_host}:{config.app_api_port}")
         logger.info(f"UnicastServer bind address: {config.app_unicast_host}:{config.app_unicast_port}")
 
+        uvicorn_log_config = uvicorn.config.LOGGING_CONFIG
+        del uvicorn_log_config["loggers"]
+
         # Start FastAPI and our application through on_event startup
-        uvicorn.run("main:app", host=config.app_api_host, port=config.app_api_port, log_level="info", reload=False)
+        uvicorn.run("main:app",
+                    host=config.app_api_host,
+                    port=config.app_api_port,
+                    log_level="info",
+                    log_config=uvicorn_log_config,
+                    reload=False)
 
         for children in multiprocessing.active_children():
             if hasattr(children, 'kill'):

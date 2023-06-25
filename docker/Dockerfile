@@ -3,7 +3,7 @@ FROM python:3.10-slim-buster
 # Установка git
 RUN apt-get update && apt-get install -y --no-install-recommends git
 
-LABEL version=1.0.4
+LABEL version=1.0.5
 EXPOSE 7005
 EXPOSE 1234
 

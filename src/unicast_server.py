@@ -25,9 +25,9 @@ class UnicastServer(multiprocessing.Process):
         self.start()
 
     def start(self) -> None:
-        # This class use threading
+        # This class use multiprocessing.Process
         super().start()
-        # function self.run in new Thread
+        # function self.run in new Process
 
     def kill(self):
         self.log.debug('kill multiprocessing.Process')

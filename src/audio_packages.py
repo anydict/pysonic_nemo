@@ -11,6 +11,19 @@ from src.dataclasses.package import Package
 from struct import unpack, pack
 import src.models.http_models as http_models
 
+CODE_ERROR = -9
+CODE_AWAIT_ANALISE = -1
+CODE_NOT_FOUND = 0
+
+MAX_RTP_SEQ_NUMBER = 65535
+AMPLITUDE_THRESHOLD_BEEP = 9999
+AMPLITUDE_THRESHOLD_VOICE = 260
+AMPLITUDE_THRESHOLD_NOISE = 20
+
+SECONDS_SLEEP_WAIT_PACKAGES = 0.5
+SECONDS_FOR_ABSOLUTE_SILENCE = 30
+DEFAULT_SAMPLE_WIDTH = 2  # for 16 bit this equal 2
+
 
 class AudioPackages(threading.Thread):
     def __init__(self,
@@ -40,34 +53,30 @@ class AudioPackages(threading.Thread):
         self.max_amplitude_analyzed_samples: dict[int, int] = {}
 
         self.break_while_time: str = ''
-
-        self.seconds_sleep_wait_packages: float = 0.5
-        self.minimum_packages_for_analyse: int = 25
-
         self.time_add_first_package: datetime = datetime.now()
         self.time_add_last_package: datetime = datetime.now()
 
+        self.wrap_around_coefficient: int = 1
+        self.length_payload = length_payload
         self.seq_num_first_package: int = first_seq_num
         self.seq_num_last_package: int = first_seq_num
-        self.seq_num_answer_package: int = -1
-        self.length_payload = length_payload
 
-        self.wrap_around_coefficient: int = 1
-
-        self.first_beep_threshold: int = 9999
-        self.first_beep_seq_num: int = -1
-
-        self.first_noise_answer_threshold: int = 90  # config.first_noise_answer_threshold
-        self.first_noise_after_answer_time: str = ''
-
-        self.first_voice_threshold: int = 260
-        self.first_voice_time: str = ''
-
-        self.seconds_for_absolute_silence: int = 30
+        self.seq_num_answer_package: int = CODE_AWAIT_ANALISE
+        self.seq_num_first_beep: int = CODE_AWAIT_ANALISE
+        self.seq_num_first_noise_after_answer: int = CODE_AWAIT_ANALISE
+        self.seq_num_first_voice: int = CODE_AWAIT_ANALISE
         self.flag_absolute_silence: int = 0
 
         self.log = logger.bind(object_id=f'{em_ssrc}@{em_host}:{em_port}')
         self.log.debug('init AudioPackages')
+
+    def get_sample_width(self) -> int:
+        if self.event_create:
+            if self.event_create.info.em_sample_width != DEFAULT_SAMPLE_WIDTH:
+                self.log.warning('Correct operation with another number is not guaranteed')
+            return self.event_create.info.em_sample_width
+        else:
+            return DEFAULT_SAMPLE_WIDTH
 
     def append_package_for_analyse(self, package: Package):
         self.time_add_last_package: datetime = datetime.now()
@@ -87,9 +96,11 @@ class AudioPackages(threading.Thread):
             create_datetime = datetime.fromisoformat(self.event_create.event_time)
             answer_datetime = datetime.fromisoformat(event.event_time)
             duration_before_answer = (answer_datetime - create_datetime).total_seconds()
-            duration_one_sample = self.length_payload / self.event_create.info.em_sample_width / self.event_create.info.em_sample_rate
+            duration_one_sample = self.length_payload / self.get_sample_width() / self.event_create.info.em_sample_rate
             number_samples_before_answer = duration_before_answer / duration_one_sample
             self.seq_num_answer_package: int = int(self.seq_num_first_package + number_samples_before_answer)
+        else:
+            self.log.error('event_create not found!')
 
     def add_event_detect(self, event: http_models.EventDetect):
         self.events_detect.append(event)
@@ -100,6 +111,11 @@ class AudioPackages(threading.Thread):
     def stop(self):
         self.log.debug('go stop')
         self.config.alive = False
+
+    def start(self) -> None:
+        # This class use threading
+        super().start()
+        # function self.run in new Thread
 
     def run(self):
         try:
@@ -117,15 +133,15 @@ class AudioPackages(threading.Thread):
 
                 self.start_parse()
 
-                if self.first_beep_seq_num < 0:
-                    self.first_beep_seq_num = self.find_first_beep_time()
+                if self.seq_num_first_beep < 0:
+                    self.seq_num_first_beep = self.find_seq_num_first_beep()
 
                 if self.event_answer is not None:
-                    self.first_noise_after_answer_time = self.find_first_noise_after_answer_time()
-                    self.first_voice_time = self.find_first_voice_time()
+                    self.seq_num_first_noise_after_answer = self.find_seq_num_first_noise_after_answer()
+                    self.seq_num_first_voice = self.find_seq_num_first_voice()
                     self.flag_absolute_silence = self.find_absolute_silence()
 
-                time.sleep(self.seconds_sleep_wait_packages)
+                time.sleep(SECONDS_SLEEP_WAIT_PACKAGES)
         except Exception as e:
             self.log.error(e)
             self.log.exception(e)
@@ -150,16 +166,12 @@ class AudioPackages(threading.Thread):
             return False
 
     def start_parse(self):
-        if self.event_create is None:
-            self.log.error('event_create not found')
-            number_samples = int(self.length_payload / 2)
-        else:
-            number_samples = int(self.length_payload / self.event_create.info.em_sample_width)
+        number_samples = int(self.length_payload / self.get_sample_width())
 
         while len(self.packages_for_analyse) > 0:
             package = self.packages_for_analyse.pop(0)
             if package.seq_num < 20 and package.seq_num < self.seq_num_first_package:
-                self.wrap_around_coefficient = 1 + round(self.seq_num_last_package / 65535)
+                self.wrap_around_coefficient = 1 + round(self.seq_num_last_package / MAX_RTP_SEQ_NUMBER)
                 self.log.error(f'FIND wrap_around={self.wrap_around_coefficient}')
 
             fix_seq_num = self.wrap_around_coefficient * package.seq_num
@@ -169,70 +181,86 @@ class AudioPackages(threading.Thread):
             if self.seq_num_last_package < fix_seq_num:
                 self.seq_num_last_package = fix_seq_num
 
-        # if len(self.analyzed_samples) == self.seq_num_last_package - self.seq_num_first_package + 1:
-        #     return
+        if len(self.analyzed_samples) == self.seq_num_last_package - self.seq_num_first_package + 1:
+            return
 
-        # for seq_num in range(self.seq_num_first_package, self.seq_num_last_package):
-        #     if seq_num not in self.analyzed_samples:
-        #         self.log.error(f'Find loss package! {seq_num}')
-        #         self.analyzed_samples[seq_num] = [0] * number_samples
-        #         self.max_amplitude_analyzed_samples[seq_num] = 0
+        for seq_num in range(self.seq_num_first_package, self.seq_num_last_package):
+            if seq_num not in self.analyzed_samples:
+                self.log.error(f'Find loss package! {seq_num}')
+                self.analyzed_samples[seq_num] = [0] * number_samples
+                self.max_amplitude_analyzed_samples[seq_num] = 0
 
-    def find_first_beep_time(self):
-        if self.first_beep_seq_num >= 0:
-            return self.first_beep_seq_num
+    def find_seq_num_first_beep(self):
+        if self.seq_num_first_beep != CODE_AWAIT_ANALISE:
+            return self.seq_num_first_beep
 
         sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
         for seq_num in sorted_seq_num:
-            if self.seq_num_answer_package > 0 and seq_num >= self.seq_num_answer_package:
+            if self.event_answer and seq_num >= self.seq_num_answer_package:
                 self.log.warning(f'find answer, but not found beep!')
-                return 0
-            if self.max_amplitude_analyzed_samples[seq_num] > self.first_beep_threshold:
+                return CODE_NOT_FOUND
+            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_BEEP:
                 self.log.debug(f'find_first_beep_time seq_num={seq_num}')
                 return seq_num
 
-        return self.first_beep_seq_num
+        return self.seq_num_first_beep
 
-    def find_first_noise_after_answer_time(self):
-        if self.first_noise_after_answer_time != '':
-            return self.first_noise_after_answer_time
+    def find_seq_num_first_noise_after_answer(self):
+        if self.seq_num_first_noise_after_answer != CODE_AWAIT_ANALISE:
+            return self.seq_num_first_noise_after_answer
 
         if self.event_answer is None:
-            return ''
+            return self.seq_num_first_noise_after_answer
 
-        for seq_num in self.analyzed_samples:
-            if self.analyzed_samples[seq_num][0] > 0:
-                return datetime.now().isoformat()
-        return ''
+        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        for seq_num in sorted_seq_num:
+            if seq_num < self.seq_num_answer_package:
+                continue
 
-    def find_first_voice_time(self):
-        if self.first_voice_time != '':
-            return self.first_voice_time
+            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_NOISE:
+                return seq_num
+        return self.seq_num_first_noise_after_answer
 
-        for seq_num in self.analyzed_samples:
-            if self.analyzed_samples[seq_num][0] > 150:
-                return datetime.now().isoformat()
-        return ''
+    def find_seq_num_first_voice(self):
+        if self.seq_num_first_voice != CODE_AWAIT_ANALISE:
+            return self.seq_num_first_voice
+
+        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        for seq_num in sorted_seq_num:
+            if seq_num < self.seq_num_answer_package:
+                continue
+
+            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_VOICE:
+                return seq_num
+
+        return self.seq_num_first_voice
 
     def find_absolute_silence(self):
-        if self.first_beep_seq_num > 0:
+        if self.seq_num_first_beep > 0:
             return 0
-        elif self.first_noise_after_answer_time != '':
+        elif self.seq_num_first_noise_after_answer > 0:
             return 0
-        elif self.first_voice_time != '':
-            return
+        elif self.seq_num_first_voice > 0:
+            return 0
         elif self.flag_absolute_silence > 0:
             return self.flag_absolute_silence
+
+        # TODO find silence seconds
 
         return 0
 
     def start_save(self):
         try:
             self.log.info('start_save')
-            self.log.info(f'self.first_beep_seq_num={self.first_beep_seq_num}')
-            self.log.info(f' self.seq_num_answer_package={self.seq_num_answer_package}')
+
             self.log.info(f' self.seq_num_first_package={self.seq_num_first_package}')
+            self.log.info(f'self.seq_num_first_beep={self.seq_num_first_beep}')
+            self.log.info(f' self.seq_num_first_noise_after_answer={self.seq_num_first_noise_after_answer}')
+            self.log.info(f' self.seq_num_answer_package={self.seq_num_answer_package}')
+            self.log.info(f' self.seq_num_first_voice={self.seq_num_first_voice}')
             self.log.info(f' self.seq_num_last_package={self.seq_num_last_package}')
+            self.log.info(f' self.flag_absolute_silence={self.flag_absolute_silence}')
+
             self.log.info(f' len packs={len(self.max_amplitude_analyzed_samples)}')
             self.log.info(f' len raw packs={len(self.packages_for_analyse)}')
             time.sleep(1)
