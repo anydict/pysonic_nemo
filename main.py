@@ -74,12 +74,7 @@ app.add_middleware(CORSMiddleware,
 async def logging_dependency(request: Request):
     druid = request.headers.get('druid')
     logger.debug(f"druid={druid} {request.method} {request.url}")
-    logger.debug(f"druid={druid} Params:")
-    for name, value in request.path_params.items():
-        logger.debug(f"druid={druid}\t{name}: {value}")
-    logger.debug(f"druid={druid} Headers:")
-    for name, value in request.headers.items():
-        logger.debug(f"druid={druid}\t{name}: {value}")
+    logger.debug(request.headers)
 
 
 app.include_router(routers.router, dependencies=[Depends(logging_dependency)])
@@ -124,7 +119,7 @@ if __name__ == "__main__":
         del uvicorn_log_config["loggers"]
 
         # Start FastAPI and our application through on_event startup
-        uvicorn.run("main:app",
+        uvicorn.run(app=f'main:app',
                     host=config.app_api_host,
                     port=config.app_api_port,
                     log_level="info",

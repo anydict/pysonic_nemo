@@ -41,7 +41,7 @@ class Manager(object):
         self.unicast_server = UnicastServer(self.config, self.mp_queue)
 
         while self.config.shutdown is False:
-            self.queue_packages = []
+            self.queue_packages: list[Package] = []
             try:
                 item = self.mp_queue.get_nowait()
                 self.queue_packages.extend(item)
@@ -61,7 +61,7 @@ class Manager(object):
             for package in self.queue_packages:
                 ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
                 if ssrc_host_port not in self.audio_packages:
-                    self.log.info(f'New AudioPackages {ssrc_host_port}')
+                    self.log.info(f'New AudioPackages {ssrc_host_port} payload_type={package.payload_type}')
                     audio_packages = AudioPackages(config=self.config,
                                                    em_host=package.unicast_host,
                                                    em_port=package.unicast_port,

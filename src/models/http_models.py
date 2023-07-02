@@ -22,7 +22,7 @@ class EventCreate(BaseModel):
         save_record: int
         save_format: str
         save_sample_rate: int
-        save_bit_rate: int
+        save_sample_width: int
         save_filename: str
         save_concat_druid: str
         speech_recognition: int
