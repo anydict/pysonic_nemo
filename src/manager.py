@@ -1,26 +1,24 @@
 import asyncio
-import multiprocessing
 from datetime import datetime, timedelta
 from queue import Empty
-from typing import Union
 
 from loguru import logger
 
 from src.audio_packages import AudioPackages
+from src.client.callpy_client import CallPyClient
 from src.config import Config
 from src.dataclasses.package import Package
 import src.models.http_models as http_models
-from src.unicast_server import UnicastServer
 
 
 class Manager(object):
     """He runs calls and send messages in rooms"""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, mp_queue):
         self.config: Config = config
+        self.callpy_clients: dict[str, CallPyClient] = {}
         self.queue_packages: list[Package] = []
-        self.mp_queue = multiprocessing.Queue()
-        self.unicast_server: Union[UnicastServer, None] = None
+        self.mp_queue = mp_queue
         self.chans: list[AudioPackages] = []
         self.app = config.app
         self.log = logger.bind(object_id='manager')
@@ -30,6 +28,15 @@ class Manager(object):
     def __del__(self):
         self.log.debug('object has died')
 
+    def close_session(self):
+        self.log.info('start close_session')
+        self.config.alive = False
+        self.config.shutdown = True
+
+        for callpy_client in self.callpy_clients.values():
+            asyncio.create_task(callpy_client.close_session())
+        self.log.info('end close_session')
+
     async def alive(self):
         while self.config.alive:
             self.log.info(f"alive")
@@ -37,9 +44,6 @@ class Manager(object):
 
     async def start_manager(self):
         self.log.info('start_manager')
-
-        self.unicast_server = UnicastServer(self.config, self.mp_queue)
-
         while self.config.shutdown is False:
             self.queue_packages: list[Package] = []
             try:
@@ -75,31 +79,40 @@ class Manager(object):
                 elif ssrc_host_port in self.audio_packages:
                     audio_packages = self.audio_packages[ssrc_host_port]
                     audio_packages.append_package_for_analyse(package)
-            await asyncio.sleep(0)
+
+        self.log.info('END WHILE MANAGER')
 
     async def start_event_create(self, event: http_models.EventCreate) -> str:
-        self.log.info(f'event_name={event.event_name} and druid={event.druid}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
         host_port = f'{event.info.em_host}:{event.info.em_port}'
         em_ssrc = ''
         stop_time = datetime.now() + timedelta(seconds=event.info.em_wait_seconds)
 
+        address = f'{event.info.callback_host}:{event.info.callback_port}'
+        if address not in self.callpy_clients:
+            self.log.debug('start create callpy_client')
+            callpy_client = CallPyClient(event.info.callback_host, event.info.callback_port)
+            self.callpy_clients[address] = callpy_client
+        else:
+            self.log.debug('callpy_client already exists')
+
         while em_ssrc == '' and stop_time > datetime.now():
             for ssrc_host_port in self.audio_packages:
-                if host_port in ssrc_host_port and self.audio_packages[ssrc_host_port].druid == '':
+                if host_port in ssrc_host_port and self.audio_packages[ssrc_host_port].call_id == '':
                     audio_packages = self.audio_packages[ssrc_host_port]
-                    audio_packages.add_event_create(event)
+                    audio_packages.add_event_create(event, self.callpy_clients[address])
                     em_ssrc = audio_packages.em_ssrc
             await asyncio.sleep(0.5)
 
         if em_ssrc == '':
-            self.log.error(f'for druid={event.druid} not found audio_packages')
-            self.log.error(f'{event.druid} >> {event.info.em_host}:{event.info.em_port}')
+            self.log.error(f'for call_id={event.call_id} not found audio_packages')
+            self.log.error(f'{event.call_id} >> {event.info.em_host}:{event.info.em_port}')
 
         return em_ssrc
 
     async def start_event_progress(self, event: http_models.EventProgress) -> bool:
         ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and druid={event.druid} ssrc_host_port={ssrc_host_port}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
 
         if ssrc_host_port in self.audio_packages:
             audio_packages = self.audio_packages[ssrc_host_port]
@@ -110,7 +123,7 @@ class Manager(object):
 
     async def start_event_answer(self, event: http_models.EventAnswer) -> bool:
         ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and druid={event.druid} ssrc_host_port={ssrc_host_port}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
 
         if ssrc_host_port in self.audio_packages:
             audio_packages = self.audio_packages[ssrc_host_port]
@@ -122,7 +135,7 @@ class Manager(object):
 
     async def start_event_detect(self, event: http_models.EventDetect) -> bool:
         ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and druid={event.druid} ssrc_host_port={ssrc_host_port}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
 
         if ssrc_host_port in self.audio_packages:
             audio_packages = self.audio_packages[ssrc_host_port]
@@ -133,7 +146,7 @@ class Manager(object):
 
     async def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
         ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and druid={event.druid} ssrc_host_port={ssrc_host_port}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
 
         if ssrc_host_port in self.audio_packages:
             audio_packages = self.audio_packages[ssrc_host_port]

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class Event(BaseModel):
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str
@@ -24,15 +24,17 @@ class EventCreate(BaseModel):
         save_sample_rate: int
         save_sample_width: int
         save_filename: str
-        save_concat_druid: str
+        save_concat_call_id: str
         speech_recognition: int
         detection_autoresponse: int
         detection_voice_start: int
         detection_absolute_silence: int
+        callback_host: str
+        callback_port: int
 
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str
@@ -50,7 +52,7 @@ class EventProgress(BaseModel):
 
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str
@@ -68,7 +70,7 @@ class EventAnswer(BaseModel):
 
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str
@@ -90,7 +92,7 @@ class EventDetect(BaseModel):
 
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str
@@ -108,7 +110,7 @@ class EventDestroy(BaseModel):
 
     event_name: str
     event_time: str
-    druid: str
+    call_id: str
     chan_id: str
     send_time: str
     token: str

@@ -8,7 +8,10 @@ from src.dataclasses.package import Package
 
 
 class UnicastServer(multiprocessing.Process):
-    def __init__(self, config: Config, mp_queue: multiprocessing.Queue):
+    def __init__(self,
+                 config: Config,
+                 mp_queue: multiprocessing.Queue,
+                 finish_event: multiprocessing.Event):
         multiprocessing.Process.__init__(self)
         self.app: str = config.app
         self.unicast_host: str = config.app_unicast_host
@@ -16,12 +19,12 @@ class UnicastServer(multiprocessing.Process):
         self.unicast_protocol: str = config.app_unicast_protocol
         self.app_unicast_buffer_size: int = config.app_unicast_buffer_size
         self.mp_queue: multiprocessing.Queue = mp_queue
+        self.finish_event = finish_event
         self.buffer_queue: list[Package] = []
         self.buffer_clear_time = time.time()
         self.config: Config = config
         self.log = logger.bind(object_id='unicast_server')
         self.server_socket = None
-        self.exit = multiprocessing.Event()
         self.start()
 
     def start(self) -> None:
@@ -29,17 +32,13 @@ class UnicastServer(multiprocessing.Process):
         super().start()
         # function self.run in new Process
 
-    def kill(self):
-        self.log.debug('kill multiprocessing.Process')
-        self.exit.set()
-
     def run(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind((self.unicast_host, self.unicast_port))
         self.server_socket.settimeout(1)
         self.log.debug(f'socket for receive Unicast packages started')
 
-        while self.exit.is_set() is False:
+        while self.finish_event.is_set() is False:
             try:
                 data, addr = self.server_socket.recvfrom(self.app_unicast_buffer_size)
                 package = Package(addr[0], addr[1], data)
@@ -61,3 +60,6 @@ class UnicastServer(multiprocessing.Process):
                     self.buffer_clear_time = time.time()
                     self.buffer_queue = []
                 self.log.error(e)
+            except KeyboardInterrupt:
+                self.log.info('KeyboardInterrupt')
+        self.log.info('END WHILE UNICAST')

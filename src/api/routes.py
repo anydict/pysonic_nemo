@@ -54,7 +54,7 @@ class Routers(object):
         receive_time = datetime.now().isoformat()
 
         json_str = json.dumps({
-            "druid": event.druid,
+            "call_id": event.call_id,
             "event_name": event.event_name,
             "send_time": event.send_time,
             "receive_time": receive_time
