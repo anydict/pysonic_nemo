@@ -4,7 +4,7 @@ import time
 
 from loguru import logger
 from src.config import Config
-from src.dataclasses.package import Package
+from src.custom_dataclasses.package import Package
 
 
 class UnicastServer(multiprocessing.Process):
@@ -62,4 +62,5 @@ class UnicastServer(multiprocessing.Process):
                 self.log.error(e)
             except KeyboardInterrupt:
                 self.log.info('KeyboardInterrupt')
+                break
         self.log.info('END WHILE UNICAST')

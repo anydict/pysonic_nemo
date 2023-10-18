@@ -1,16 +1,17 @@
-import threading
 import time
 import wave
 from datetime import datetime
+from threading import Thread
 from typing import Optional
 
 from loguru import logger
 
 from src.client.callpy_client import CallPyClient
 from src.config import Config
-from src.dataclasses.package import Package
+from src.custom_dataclasses.package import Package
 from struct import unpack, pack
-import src.models.http_models as http_models
+import src.custom_models.http_models as http_models
+from src.custom_dataclasses.result_detection import ResultDetection
 
 CODE_ERROR = -9
 CODE_AWAIT_ANALISE = -1
@@ -27,7 +28,7 @@ DEFAULT_SAMPLE_WIDTH = 2  # for 16 bit this equal 2
 DEFAULT_SAMPLE_RATE = 16000  # 16k kHz
 
 
-class AudioPackages(threading.Thread):
+class AudioContainer(Thread):
     def __init__(self,
                  config: Config,
                  em_host: str,
@@ -36,7 +37,7 @@ class AudioPackages(threading.Thread):
                  first_seq_num: int,
                  length_payload: int
                  ):
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         self.config: Config = config
         self.app: str = config.app
         self.em_host: str = em_host
@@ -58,6 +59,8 @@ class AudioPackages(threading.Thread):
         self.max_amplitude_analyzed_samples: dict[int, int] = {}
         self.min_amplitude_analyzed_samples: dict[int, int] = {}
 
+        self.samples_trend: dict[int, int] = {}
+
         self.break_while_time: str = ''
         self.time_add_first_package: datetime = datetime.now()
         self.time_add_last_package: datetime = datetime.now()
@@ -74,8 +77,17 @@ class AudioPackages(threading.Thread):
         self.amp_adc_noise: int = CODE_AWAIT_ANALISE
         self.flag_absolute_silence: int = 0
 
+        self.result_detections: dict[int, ResultDetection] = {}
+        self.found_templates: list[str] = []
+
         self.log = logger.bind(object_id=f'{em_ssrc}@{em_host}:{em_port}')
         self.log.info(f'init AudioPackages length_payload={length_payload} first_seq_num={first_seq_num}')
+
+    def add_found_template(self, name: str):
+        self.found_templates.append(name)
+
+    def add_result_detections(self, template_id: int, result: ResultDetection):
+        self.result_detections[template_id] = result
 
     def get_sample_width(self) -> int:
         if self.event_create:
@@ -127,10 +139,6 @@ class AudioPackages(threading.Thread):
     def add_event_destroy(self, event: http_models.EventDestroy):
         self.event_destroy = event
 
-    def stop(self):
-        self.log.debug('go stop')
-        self.config.alive = False
-
     def start(self) -> None:
         # This class use threading (see function self.run)
         super().start()
@@ -141,7 +149,7 @@ class AudioPackages(threading.Thread):
                 if self.config.alive is False:
                     return
 
-                if self.check_end() and len(self.packages_for_analyse) == 0:
+                if self.check_end():
                     self.start_parse()
                     self.break_while_time = datetime.now().isoformat()
                     break
@@ -203,6 +211,9 @@ class AudioPackages(threading.Thread):
             elif package.seq_num > 50:
                 fix_seq_num = package.seq_num + self.number_resets_sequence * SEQ_NUMBER_AFTER_FIRST_RESET
 
+            if self.seq_num_last_package < fix_seq_num:
+                self.seq_num_last_package = fix_seq_num
+
             self.analyzed_samples[fix_seq_num] = list(unpack(">" + "h" * number_samples, package.payload))
 
             self.bytes_samples[fix_seq_num] = b''
@@ -212,8 +223,14 @@ class AudioPackages(threading.Thread):
             self.max_amplitude_analyzed_samples[fix_seq_num] = max(self.analyzed_samples[fix_seq_num])
             self.min_amplitude_analyzed_samples[fix_seq_num] = min(self.analyzed_samples[fix_seq_num])
 
-            if self.seq_num_last_package < fix_seq_num:
-                self.seq_num_last_package = fix_seq_num
+            if self.analyzed_samples.get(fix_seq_num - 1):
+                diff = max(self.analyzed_samples[fix_seq_num]) - max(self.analyzed_samples[fix_seq_num - 1])
+                if max(self.analyzed_samples[fix_seq_num]) < 200:
+                    self.samples_trend[fix_seq_num] = 0  # very small amplitude
+                elif diff > 200:
+                    self.samples_trend[fix_seq_num] = 1  # height
+                else:
+                    self.samples_trend[fix_seq_num] = 2  # decline
 
         if len(self.packages_for_analyse) > 100:
             self.log.warning(f'find delay!!! packages_for_analyse={len(self.packages_for_analyse)}')
@@ -239,7 +256,7 @@ class AudioPackages(threading.Thread):
             if self.event_answer and seq_num >= self.seq_num_answer_package:
                 self.log.warning(f'find answer, but not found beep!')
                 return CODE_NOT_FOUND
-            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_BEEP:
+            elif self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_BEEP:
                 self.log.debug(f'find_first_beep_time seq_num={seq_num}')
                 return seq_num
 
@@ -334,6 +351,12 @@ class AudioPackages(threading.Thread):
             self.log.info(f' self.get_duration_one_sample={self.get_duration_one_sample()}')
             self.log.info(f' self.amp_adc_noise={self.amp_adc_noise}')
 
+            self.log.info(f' *** ')
+            s1 = ''.join([str(q) for q in self.samples_trend.values()])
+            self.log.info(f' chart_amplitude_direction={self.samples_trend}')
+            self.log.info(f' s1={s1}')
+            self.log.info(f' *** ')
+
             self.log.info(f' len packs={len(self.max_amplitude_analyzed_samples)}')
             self.log.info(f' len raw packs={len(self.packages_for_analyse)}')
             time.sleep(1)
@@ -345,7 +368,7 @@ class AudioPackages(threading.Thread):
                 self.log.error('found loss packs')
 
             if self.event_create is None or self.event_create.info.save_record == 1:
-                with wave.open(f'audio_two{self.em_ssrc}.wav', 'wb') as f:
+                with wave.open(f'123_audio_two{self.em_ssrc}.wav', 'wb') as f:
                     f.setnchannels(1)  # mono
                     f.setsampwidth(self.get_sample_width())
                     f.setframerate(self.get_sample_rate())

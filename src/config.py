@@ -17,7 +17,7 @@ class Config(object):
     def __init__(self, join_config: dict):
         self.join_config: dict = join_config
 
-        self.new_config = self.default
+        self.new_config = self.default.copy()
         self.new_config.update(join_config)
         self.alive: bool = bool(self.new_config['alive'])  # if true then start kill FastAPI and APP
         self.shutdown: bool = bool(self.new_config['shutdown'])  # if true then waiting for finish all tasks
@@ -32,6 +32,16 @@ class Config(object):
         self.app_unicast_buffer_size: int = int(self.new_config['app_unicast_buffer_size'])
 
         self.first_noise_answer_threshold: int = int(self.new_config['first_noise_answer_threshold'])
+
+    def get_different_type_variables(self) -> list:
+        different: list[str] = []
+        for variable in self.new_config:
+            new_type = type(self.default[variable])
+            if variable not in self.default:
+                different.append(f'not found config variable with name: {variable}')
+            elif isinstance(self.new_config[variable], type(self.default[variable])) is False:
+                different.append(f'{variable}: wrong={new_type}, right={type(self.new_config[variable])}')
+        return different
 
 
 if __name__ == "__main__":

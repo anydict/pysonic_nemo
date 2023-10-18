@@ -20,6 +20,7 @@ from src.unicast_server import UnicastServer
 manager = None
 mp_queue = multiprocessing.Queue()
 finish_event = multiprocessing.Event()
+tasks = []
 
 
 async def app_startup():
@@ -29,20 +30,18 @@ async def app_startup():
     routers = Routers(config=config, manager=manager)
     app.include_router(routers.router, dependencies=[Depends(logging_dependency)])
 
-    asyncio.create_task(manager.start_manager())
-    asyncio.create_task(manager.alive())
+    tasks.append(asyncio.create_task(manager.start_manager()))
+    tasks.append(asyncio.create_task(manager.alive()))
 
 
 async def app_shutdown():
     finish_event.set()
     if isinstance(manager, Manager):
-        manager.close_session()
+        await manager.close_session()
 
 
 async def logging_dependency(request: Request):
-    call_id = request.headers.get('call_id')
-    logger.debug(f"call_id={call_id} {request.method} {request.url}")
-    logger.debug(request.headers)
+    logger.debug(f"{request.method} url={request.url} client_info:{request.client} headers: {request.headers}")
 
 
 async def custom_validation_exception_handler(request: Request,
@@ -63,6 +62,7 @@ async def custom_validation_exception_handler(request: Request,
         })
     logger.error(f"ValidationError in path: {request.url.path}")
     logger.error(f"ValidationError detail: {errors}")
+    logger.error(f"ValidationError client_info: {request.client}")
     logger.error(request.headers)
 
     request_body = await request.body()
@@ -112,6 +112,8 @@ if __name__ == "__main__":
                    format=custom_log_format)
 
         logger = logger.bind(object_id='main')
+        for diff in config.get_different_type_variables():
+            logger.error(diff)
 
         app = FastAPI(exception_handlers={RequestValidationError: custom_validation_exception_handler})
 

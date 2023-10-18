@@ -9,7 +9,7 @@ from src.config import Config
 from fastapi.responses import Response, JSONResponse
 
 from src.manager import Manager
-import src.models.http_models as http_models
+import src.custom_models.http_models as http_models
 
 
 class Routers(object):
