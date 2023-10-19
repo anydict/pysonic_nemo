@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import time
 from struct import pack
 
 import soundfile as sf
@@ -74,3 +75,10 @@ for file_name in file_list:
 
 simple = SimpleDetection(config=config, audio_containers=audio_containers)
 simple.start()
+
+time.sleep(5)
+config.shutdown = True
+print(time.time())
+
+for key in audio_containers:
+    print(audio_containers[key].result_detections)

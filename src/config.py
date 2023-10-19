@@ -1,18 +1,19 @@
 class Config(object):
     """Config for our app"""
 
-    default = {'app': 'pysonic',
-               'app_api_host': '127.0.0.1',
-               'app_api_port': 7005,
-               'alive': True,
-               'shutdown': False,
-               'log_console': True,
-               'app_unicast_host': '127.0.0.1',
-               'app_unicast_port': 1234,
-               'app_unicast_protocol': 'udp',
-               'app_unicast_buffer_size': 1024,
-               'first_noise_answer_threshold': 250
-               }
+    default = {
+        "app": "pysonic",
+        "app_api_host": "127.0.0.1",
+        "app_api_port": 7005,
+        "alive": True,
+        "shutdown": False,
+        "log_console": True,
+        "app_unicast_host": "127.0.0.1",
+        "app_unicast_port": 1234,
+        "app_unicast_protocol": "udp",
+        "app_unicast_buffer_size": 1024,
+        "first_noise_answer_threshold": 250
+    }
 
     def __init__(self, join_config: dict):
         self.join_config: dict = join_config

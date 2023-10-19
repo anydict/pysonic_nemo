@@ -40,9 +40,6 @@ class EventCreate(BaseModel):
     token: str
     info: EventCreateInfo
 
-    class Config:
-        orm_mode = True
-
 
 class EventProgress(BaseModel):
     class EventProgressInfo(BaseModel):
@@ -58,9 +55,6 @@ class EventProgress(BaseModel):
     token: str
     info: EventProgressInfo
 
-    class Config:
-        orm_mode = True
-
 
 class EventAnswer(BaseModel):
     class EventAnswerInfo(BaseModel):
@@ -75,9 +69,6 @@ class EventAnswer(BaseModel):
     send_time: str
     token: str
     info: EventAnswerInfo
-
-    class Config:
-        orm_mode = True
 
 
 class EventDetect(BaseModel):
@@ -98,9 +89,6 @@ class EventDetect(BaseModel):
     token: str
     info: EventDetectInfo
 
-    class Config:
-        orm_mode = True
-
 
 class EventDestroy(BaseModel):
     class EventDestroyInfo(BaseModel):
@@ -115,6 +103,3 @@ class EventDestroy(BaseModel):
     send_time: str
     token: str
     info: EventDestroyInfo
-
-    class Config:
-        orm_mode = True

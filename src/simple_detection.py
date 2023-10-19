@@ -39,10 +39,10 @@ class SimpleDetection(Thread):
             '/home/anydict/PycharmProjects/pysonic_nemo/src/custom_templates/hello.wav',
             dtype='int16')
 
-        for num in range(1, 3):
-            self.templates[num] = Template(template_id=num,
-                                           template_name=f'hell{num}',
-                                           amplitudes=list(audio_data))
+        # for num in range(1, 3):
+        #     self.templates[num] = Template(template_id=num,
+        #                                    template_name=f'{num}_hello',
+        #                                    amplitudes=list(audio_data))
 
         template = Template(template_id=0,
                             template_name=f'hell{0}',
@@ -111,7 +111,7 @@ class SimpleDetection(Thread):
         sections: dict[str, float] = {}
 
         # exit if mask at half is empty (lots of dots)
-        while mask_pattern.count('.') / len(mask_pattern) < 0.5:
+        while mask_pattern.count('.') / len(mask_pattern) < 0.6:
             place = randrange(0, len(mask_pattern) - 1)
             if mask_pattern[place] == '.':
                 # when replacing dot with itself
@@ -122,7 +122,7 @@ class SimpleDetection(Thread):
             for result in results:
                 matcher = SequenceMatcher(None, template_trend, result)
                 first_similarity = matcher.ratio()
-                if first_similarity > 0.7:
+                if first_similarity > 0.6:
                     sections[result] = first_similarity
                 else:
                     continue
@@ -162,13 +162,17 @@ class SimpleDetection(Thread):
                 for seq_num in range(seq_num_start, seq_num_last + 1):
                     max_amps_found_section.append(audio_container.max_amplitude_analyzed_samples[seq_num])
 
-                result = ResultDetection(template_id=template.template_id,
-                                         skip_trends=max_amps_found_section,
-                                         first_similar=first_similar)
-                audio_container.add_result_detections(template_id=template.template_id,
-                                                      result=result)
-                if pattern in audio_container.result_detections[template.template_id].skip_trends:
-                    continue
+                if template.template_id in audio_container.result_detections:
+                    result = audio_container.result_detections[template.template_id]
+                    if pattern in result.skip_trends:
+                        continue
+                    result.add_skip_trend(pattern)
+                else:
+                    result = ResultDetection(template_id=template.template_id,
+                                             first_similar=first_similar)
+                    result.add_skip_trend(pattern)
+                    audio_container.add_result_detections(template_id=template.template_id,
+                                                          result=result)
 
                 second_similarity = self.get_similarity_amplitudes(first_amps=max_amps_found_section,
                                                                    second_amps=template.max_amp_samples_list)
@@ -197,10 +201,7 @@ class SimpleDetection(Thread):
                 container_amps = []
 
                 for seq_num in range(seq_num_start, seq_num_last + 1):
-                    try:
-                        container_amps.extend(audio_container.analyzed_samples[seq_num])
-                    except:
-                        self.log.warning(f'seq_num={seq_num} max={audio_container.analyzed_samples}')
+                    container_amps.extend(audio_container.analyzed_samples[seq_num])
 
                 half = int(len(container_amps) / 2)
 
@@ -245,7 +246,7 @@ class SimpleDetection(Thread):
                 self.log.info(f' sum_container_amp={sum_container_amp} half={half}')
                 self.log.info(f' sum_between_min={sum_between_min}')
 
-                if round(amplitude_similar, 1) not in (0.9, 1.0, 1.1, 1.2):
+                if round(amplitude_similar, 1) not in (0.9, 1.0, 1.1, 1.2, 1.3):
                     self.log.info(f'skip amplitude_similar={amplitude_similar}')
                     self.skip_amps.append(max_amps_found_section)
                     continue
