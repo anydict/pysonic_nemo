@@ -56,10 +56,10 @@ class AudioContainer(Thread):
         self.packages_for_analyse: list[Package] = []
         self.bytes_samples: dict[int, bytes] = {}
         self.analyzed_samples: dict[int, list] = {}
-        self.max_amplitude_analyzed_samples: dict[int, int] = {}
-        self.min_amplitude_analyzed_samples: dict[int, int] = {}
+        self.max_amplitude_samples: dict[int, int] = {}
+        self.min_amplitude_samples: dict[int, int] = {}
 
-        self.samples_trend: dict[int, int] = {}
+        self.trend_samples: dict[int, int] = {}
 
         self.break_while_time: str = ''
         self.time_add_first_package: datetime = datetime.now()
@@ -220,17 +220,21 @@ class AudioContainer(Thread):
             for amp in self.analyzed_samples[fix_seq_num]:
                 self.bytes_samples[fix_seq_num] += pack('<h', amp)
 
-            self.max_amplitude_analyzed_samples[fix_seq_num] = max(self.analyzed_samples[fix_seq_num])
-            self.min_amplitude_analyzed_samples[fix_seq_num] = min(self.analyzed_samples[fix_seq_num])
+            self.max_amplitude_samples[fix_seq_num] = max(self.analyzed_samples[fix_seq_num])
+            self.min_amplitude_samples[fix_seq_num] = min(self.analyzed_samples[fix_seq_num])
 
             if self.analyzed_samples.get(fix_seq_num - 1):
                 diff = max(self.analyzed_samples[fix_seq_num]) - max(self.analyzed_samples[fix_seq_num - 1])
-                if max(self.analyzed_samples[fix_seq_num]) < 200:
-                    self.samples_trend[fix_seq_num] = 0  # very small amplitude
-                elif diff > 200:
-                    self.samples_trend[fix_seq_num] = 1  # height
+                if max(self.analyzed_samples[fix_seq_num]) < 1000:
+                    self.trend_samples[fix_seq_num] = 0  # very small amplitude
+                elif diff < -1000:
+                    self.trend_samples[fix_seq_num] = 9  # x2decline
+                elif diff < 0:
+                    self.trend_samples[fix_seq_num] = 8  # decline
+                elif diff < 1000:
+                    self.trend_samples[fix_seq_num] = 1  # height
                 else:
-                    self.samples_trend[fix_seq_num] = 2  # decline
+                    self.trend_samples[fix_seq_num] = 2  # x2height
 
         if len(self.packages_for_analyse) > 100:
             self.log.warning(f'find delay!!! packages_for_analyse={len(self.packages_for_analyse)}')
@@ -243,7 +247,7 @@ class AudioContainer(Thread):
             if seq_num not in self.analyzed_samples:
                 lost_sequences.append(seq_num)
                 self.analyzed_samples[seq_num] = [0] * number_samples
-                self.max_amplitude_analyzed_samples[seq_num] = 0
+                self.max_amplitude_samples[seq_num] = 0
             if len(lost_sequences) > 0:
                 self.log.error(f'lost_sequences={lost_sequences} last={self.seq_num_last_package}')
 
@@ -251,12 +255,12 @@ class AudioContainer(Thread):
         if self.seq_num_first_beep != CODE_AWAIT_ANALISE:
             return self.seq_num_first_beep
 
-        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        sorted_seq_num = sorted(self.max_amplitude_samples)
         for seq_num in sorted_seq_num:
             if self.event_answer and seq_num >= self.seq_num_answer_package:
                 self.log.warning(f'find answer, but not found beep!')
                 return CODE_NOT_FOUND
-            elif self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_BEEP:
+            elif self.max_amplitude_samples[seq_num] > AMPLITUDE_THRESHOLD_BEEP:
                 self.log.debug(f'find_first_beep_time seq_num={seq_num}')
                 return seq_num
 
@@ -271,8 +275,8 @@ class AudioContainer(Thread):
             return CODE_NOT_FOUND
 
         for seq_num in self.analyzed_samples:
-            max_amp = self.max_amplitude_analyzed_samples[seq_num]
-            min_amp = self.min_amplitude_analyzed_samples[seq_num]
+            max_amp = self.max_amplitude_samples[seq_num]
+            min_amp = self.min_amplitude_samples[seq_num]
 
             if abs(max_amp) < AMPLITUDE_THRESHOLD_NOISE or abs(min_amp) < AMPLITUDE_THRESHOLD_NOISE:
                 continue
@@ -292,12 +296,12 @@ class AudioContainer(Thread):
         if self.event_answer is None:
             return self.seq_num_first_noise_after_answer
 
-        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        sorted_seq_num = sorted(self.max_amplitude_samples)
         for seq_num in sorted_seq_num:
             if seq_num < self.seq_num_answer_package:
                 continue
 
-            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_NOISE:
+            if self.max_amplitude_samples[seq_num] > AMPLITUDE_THRESHOLD_NOISE:
                 return seq_num
         return self.seq_num_first_noise_after_answer
 
@@ -305,12 +309,12 @@ class AudioContainer(Thread):
         if self.seq_num_first_voice != CODE_AWAIT_ANALISE:
             return self.seq_num_first_voice
 
-        sorted_seq_num = sorted(self.max_amplitude_analyzed_samples)
+        sorted_seq_num = sorted(self.max_amplitude_samples)
         for seq_num in sorted_seq_num:
             if seq_num < self.seq_num_answer_package:
                 continue
 
-            if self.max_amplitude_analyzed_samples[seq_num] > AMPLITUDE_THRESHOLD_VOICE:
+            if self.max_amplitude_samples[seq_num] > AMPLITUDE_THRESHOLD_VOICE:
                 return seq_num
 
         return self.seq_num_first_voice
@@ -329,7 +333,7 @@ class AudioContainer(Thread):
         if current_duration < 30:
             return 0
 
-        if max(self.max_amplitude_analyzed_samples) < AMPLITUDE_THRESHOLD_NOISE:
+        if max(self.max_amplitude_samples) < AMPLITUDE_THRESHOLD_NOISE:
             self.log.error('FOUND SILENCE')
             return 1
 
@@ -352,19 +356,19 @@ class AudioContainer(Thread):
             self.log.info(f' self.amp_adc_noise={self.amp_adc_noise}')
 
             self.log.info(f' *** ')
-            s1 = ''.join([str(q) for q in self.samples_trend.values()])
-            self.log.info(f' chart_amplitude_direction={self.samples_trend}')
+            s1 = ''.join([str(q) for q in self.trend_samples.values()])
+            self.log.info(f' chart_amplitude_direction={self.trend_samples}')
             self.log.info(f' s1={s1}')
             self.log.info(f' *** ')
 
-            self.log.info(f' len packs={len(self.max_amplitude_analyzed_samples)}')
+            self.log.info(f' len packs={len(self.max_amplitude_samples)}')
             self.log.info(f' len raw packs={len(self.packages_for_analyse)}')
             time.sleep(1)
 
             if len(self.packages_for_analyse) > 0:
                 self.log.error(f'len={len(self.packages_for_analyse)}')
 
-            if self.seq_num_last_package - self.seq_num_first_package + 1 != len(self.max_amplitude_analyzed_samples):
+            if self.seq_num_last_package - self.seq_num_first_package + 1 != len(self.max_amplitude_samples):
                 self.log.error('found loss packs')
 
             if self.event_create is None or self.event_create.info.save_record == 1:

@@ -1,84 +1,54 @@
-import math
 import os
 import random
 import time
-from struct import pack
 
 import soundfile as sf
 
 from src.audio_container import AudioContainer
 from src.config import Config
+from src.custom_dataclasses.template import Template
 from src.simple_detection import SimpleDetection
-
-folder = 'file_for_analysis'
-os.makedirs(folder, exist_ok=True)
 
 join_config = {"app": "pysonic", "first_noise_answer_threshold": 250}
 config = Config(join_config=join_config)
 
-file_list = [file for file in os.listdir(folder) if file.endswith('.wav')]
 audio_containers: dict[str, AudioContainer] = {}
+sample_size = 320
+sample_width = 2
+folder_records = 'file_for_analysis'
+os.makedirs(folder_records, exist_ok=True)
+file_list = [file for file in os.listdir(folder_records) if file.endswith('.wav')]
 
-for file_name in file_list:
-    file_path = os.path.join(folder, file_name)
+for index, file_name in enumerate(file_list):
+    file_path = os.path.join(folder_records, file_name)
     data, sample_rate = sf.read(file_path, dtype='int16')
 
-    amplitudes = data.tolist()
-
-    bytes_samples: dict[int, bytes] = {}
-    samples: dict[int, list] = dict()
-    max_amp_samples: dict[int, int] = dict()
-    trend_samples: dict[int, int] = dict()
-    trend_samples_str: str = ''
-    first_seq_num = 0
-    last_seq_num = math.ceil(len(data) / 320)
-    for seq_num in range(first_seq_num, last_seq_num):
-        samples[seq_num] = amplitudes[seq_num * 320: (seq_num + 1) * 320]
-        max_amp_samples[seq_num] = max(samples[seq_num])
-
-        b = b''
-        for amp in samples[seq_num]:
-            b += pack('<h', amp)
-        bytes_samples[seq_num] = b
-
-        if samples.get(seq_num - 1):
-            diff = max_amp_samples[seq_num] - max_amp_samples[seq_num - 1]
-            if max_amp_samples[seq_num] < 200:
-                trend_samples[seq_num] = 0  # very small amplitude
-            elif diff > 200:
-                trend_samples[seq_num] = 1  # height
-            else:
-                trend_samples[seq_num] = 2  # decline
-
-            trend_samples_str += str(trend_samples[seq_num])
-
-    em_host = str(random.randrange(1, 10000))
-    em_port = random.randrange(1, 10000)
-    ssrc = random.randrange(1, 10000)
-
-    ac_id = f'{ssrc}@{em_host}:{em_port}'
+    template = Template(template_id=index + 20000000,
+                        template_name=file_name,
+                        amplitudes=data.tolist(),
+                        sample_size=sample_size)
 
     audio_container = AudioContainer(config=config,
-                                     em_host=em_host,
-                                     em_port=em_port,
-                                     em_ssrc=ssrc,
-                                     first_seq_num=first_seq_num,
-                                     length_payload=640)
+                                     em_host=file_name,
+                                     em_port=index,
+                                     em_ssrc=index,
+                                     first_seq_num=0,
+                                     length_payload=sample_size * sample_width)
 
-    audio_containers[ac_id] = audio_container
+    audio_containers[file_name] = audio_container
 
     audio_container.call_id = random.randrange(1, 100000)
-    audio_container.samples_trend = trend_samples
-    audio_container.max_amplitude_analyzed_samples = max_amp_samples
-    audio_container.analyzed_samples = samples
-    audio_container.bytes_samples = bytes_samples
+    audio_container.trend_samples = template.trend_samples
+    audio_container.max_amplitude_samples = template.max_amp_samples
+    audio_container.analyzed_samples = template.samples
+    audio_container.bytes_samples = template.convert_samples2dict_bytes()
 
 simple = SimpleDetection(config=config, audio_containers=audio_containers)
 simple.start()
 
-time.sleep(5)
+time.sleep(60)
 config.shutdown = True
 print(time.time())
 
-for key in audio_containers:
-    print(audio_containers[key].result_detections)
+# for key in audio_containers:
+#     print(audio_containers[key].result_detections)
