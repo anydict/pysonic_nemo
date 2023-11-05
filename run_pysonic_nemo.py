@@ -1,9 +1,10 @@
 import asyncio
-import json
 import multiprocessing
 import os
 import platform
 import sys
+import uuid
+from datetime import datetime
 
 import uvicorn
 from fastapi import FastAPI, Request, Depends
@@ -18,9 +19,10 @@ from src.manager import Manager
 from src.unicast_server import UnicastServer
 
 manager = None
+config_path = os.path.join('config', 'config.json')
+
 mp_queue = multiprocessing.Queue()
 finish_event = multiprocessing.Event()
-tasks = []
 
 
 async def app_startup():
@@ -30,8 +32,8 @@ async def app_startup():
     routers = Routers(config=config, manager=manager)
     app.include_router(routers.router, dependencies=[Depends(logging_dependency)])
 
-    tasks.append(asyncio.create_task(manager.start_manager()))
-    tasks.append(asyncio.create_task(manager.alive()))
+    asyncio.create_task(manager.start_manager())
+    asyncio.create_task(manager.alive())
 
 
 async def app_shutdown():
@@ -41,7 +43,14 @@ async def app_shutdown():
 
 
 async def logging_dependency(request: Request):
-    logger.debug(f"{request.method} url={request.url} client_info:{request.client} headers: {request.headers}")
+    api_id = str(uuid.uuid4())
+    logger.debug(f"api_id={api_id} {request.method} {request.url}")
+    logger.debug(f"api_id={api_id} Params:")
+    for name, value in request.path_params.items():
+        logger.debug(f"api_id={api_id}\t{name}: {value}")
+    logger.debug(f"api_id={api_id} Headers:")
+    for name, value in request.headers.items():
+        logger.debug(f"api_id={api_id}\t{name}: {value}")
 
 
 async def custom_validation_exception_handler(request: Request,
@@ -49,9 +58,8 @@ async def custom_validation_exception_handler(request: Request,
     """
     logging validation error
 
-    @param request:
-    @param exc:
-    @return:
+    @param request: API request
+    @param exc: Error information
     """
     errors = []
     for error in exc.errors():
@@ -73,12 +81,7 @@ async def custom_validation_exception_handler(request: Request,
 
 if __name__ == "__main__":
     try:
-        join_config = {}
-        if os.path.isfile('config.json'):
-            with open('config.json', "r") as jsonfile:
-                join_config = json.load(jsonfile)
-
-        config = Config(join_config=join_config)
+        config = Config(config_path=config_path)
 
         logger.configure(extra={"object_id": "None"})  # Default values if not bind extra variable
         logger.remove()  # this removes duplicates in the console if we use custom log format
@@ -95,27 +98,33 @@ if __name__ == "__main__":
                        format=custom_log_format,
                        colorize=True)
         # different files for different message types
-        logger.add(sink="logs/debug.log",
-                   filter=lambda record: record["level"].name == "DEBUG",
-                   rotation="1000 MB",
-                   compression='gz',
-                   format=custom_log_format)
         logger.add(sink="logs/error.log",
                    filter=lambda record: record["level"].name == "ERROR",
                    rotation="1000 MB",
                    compression='gz',
                    format=custom_log_format)
         logger.add(sink=f"logs/{config.app}.log",
-                   filter=lambda record: record["level"].name not in ("DEBUG", "ERROR"),
                    rotation="1000 MB",
                    compression='gz',
                    format=custom_log_format)
 
         logger = logger.bind(object_id='main')
-        for diff in config.get_different_type_variables():
-            logger.error(diff)
 
         app = FastAPI(exception_handlers={RequestValidationError: custom_validation_exception_handler})
+
+
+        @app.middleware("http")
+        async def add_process_time_header(request: Request, call_next):
+            start_time = datetime.now()
+            response = await call_next(request)
+            process_time = (datetime.now() - start_time).total_seconds()
+            if process_time > 1:
+                logger.warning(f'Huge process time: {process_time}, {request.method} {request.url} {request.headers}')
+            response.headers['X-Current-Time'] = datetime.now().isoformat()
+            response.headers['X-Process-Time'] = str(process_time)
+            response.headers['Cache-Control'] = 'no-cache, no-store'
+            return response
+
 
         app.add_middleware(CORSMiddleware,
                            allow_origins=[f"http://{config.app_api_host}:{config.app_api_port}"],
@@ -132,12 +141,9 @@ if __name__ == "__main__":
         logger.info(f"Parent pid: {os.getppid()}")
         logger.info(f"Current pid: {os.getpid()}")
         logger.info(f"API bind address: {config.app_api_host}:{config.app_api_port}")
-        logger.info(f"UnicastServer bind address: {config.app_unicast_host}:{config.app_unicast_port}")
 
         uvicorn_log_config = uvicorn.config.LOGGING_CONFIG
         del uvicorn_log_config["loggers"]
-
-        UnicastServer(config=config, mp_queue=mp_queue, finish_event=finish_event)
 
         # Start FastAPI and our application in app_startup
         app.add_event_handler('startup', app_startup)
@@ -150,9 +156,7 @@ if __name__ == "__main__":
                     reload=False)
 
         logger.info(f"Shutting down")
-
     except KeyboardInterrupt:
-        logger.error(f"User aborted through keyboard")
+        logger.debug(f"User aborted through keyboard")
     except Exception as e:
-        logger.error(e)
         logger.exception(e)

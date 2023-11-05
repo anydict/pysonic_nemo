@@ -9,7 +9,7 @@ from src.client.callpy_client import CallPyClient
 from src.config import Config
 from src.custom_dataclasses.package import Package
 import src.custom_models.http_models as http_models
-from src.simple_detection import SimpleDetection
+from src.detection import Detection
 
 
 class Manager(object):
@@ -48,7 +48,7 @@ class Manager(object):
 
     async def start_manager(self):
         self.log.info('start_manager')
-        sd = SimpleDetection(config=self.config, audio_containers=self.audio_containers)
+        sd = Detection(config=self.config, audio_containers=self.audio_containers)
         sd.start()
 
         while self.config.shutdown is False:

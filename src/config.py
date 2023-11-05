@@ -1,3 +1,7 @@
+import json
+import os
+
+
 class Config(object):
     """Config for our app"""
 
@@ -15,7 +19,14 @@ class Config(object):
         "first_noise_answer_threshold": 250
     }
 
-    def __init__(self, join_config: dict):
+    def __init__(self, config_path: str = ''):
+        join_config = {}
+        if config_path and os.path.isfile(config_path):
+            with open(config_path, "r") as jsonfile:
+                join_config = json.load(jsonfile)
+        else:
+            print('WARNING! Config path not found => The default configuration will be used')
+
         self.join_config: dict = join_config
 
         self.new_config = self.default.copy()
@@ -46,5 +57,5 @@ class Config(object):
 
 
 if __name__ == "__main__":
-    c = Config(join_config={})
+    c = Config()
     print(c.alive)

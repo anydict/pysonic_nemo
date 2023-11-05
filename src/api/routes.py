@@ -2,14 +2,13 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, status
+from fastapi.responses import Response, JSONResponse
 from loguru import logger
 from pydantic import ValidationError
 
 from src.config import Config
-from fastapi.responses import Response, JSONResponse
-
+from src.custom_models.http_models import EventAnswer, EventDetect, EventDestroy, EventProgress, EventCreate, Event
 from src.manager import Manager
-import src.custom_models.http_models as http_models
 
 
 class Routers(object):
@@ -28,14 +27,14 @@ class Routers(object):
         self.router.add_api_route("/{not_found}", self.not_found, methods=["POST"])
 
     async def get_diag(self):
-        json_str = json.dumps({
+        response = {
             "app": self.config.app,
             "shutdown": self.config.shutdown,
             "alive": self.config.alive,
             "current_time": datetime.now().isoformat()
-        }, indent=4, default=str)
+        }
 
-        return Response(content=json_str, media_type='application/json')
+        return Response(content=response, media_type='application/json')
 
     async def restart(self):
         self.config.shutdown = True
@@ -48,21 +47,21 @@ class Routers(object):
             "current_time": datetime.now().isoformat()
         }, indent=4, default=str)
 
-        return Response(content=json_str, media_type='application/json')
+        return JSONResponse(content=json_str)
 
-    async def events(self, event: http_models.Event):
+    async def events(self, event: Event):
         receive_time = datetime.now().isoformat()
 
-        json_str = json.dumps({
+        response = {
             "call_id": event.call_id,
             "event_name": event.event_name,
             "send_time": event.send_time,
             "receive_time": receive_time
-        }, indent=4, default=str)
+        }
 
         try:
             if event.event_name == 'CREATE':
-                event = http_models.EventCreate.from_orm(event)
+                event = EventCreate.model_validate(event)
                 ssrc = await self.manager.start_event_create(event)
 
                 if ssrc == '':
@@ -78,16 +77,16 @@ class Routers(object):
                     })
 
             elif event.event_name == 'PROGRESS':
-                event = http_models.EventProgress.from_orm(event)
+                event = EventProgress.model_validate(event)
                 await self.manager.start_event_progress(event)
             elif event.event_name == 'ANSWER':
-                event = http_models.EventAnswer.from_orm(event)
+                event = EventAnswer.model_validate(event)
                 await self.manager.start_event_answer(event)
             elif event.event_name == 'DETECT':
-                event = http_models.EventDetect.from_orm(event)
+                event = EventDetect.model_validate(event)
                 await self.manager.start_event_detect(event)
             elif event.event_name == 'DESTROY':
-                event = http_models.EventDestroy.from_orm(event)
+                event = EventDestroy.model_validate(event)
                 await self.manager.start_event_destroy(event)
             else:
                 return Response(content=json.dumps({"msg": "Event not found"}), status_code=404)
@@ -109,17 +108,18 @@ class Routers(object):
                 })
             logger.error(f"ValidationError in event={event.event_name}")
             logger.error(f"ValidationError detail: {errors}")
+            logger.exception(exc)
 
             return JSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content=errors[0] if len(errors) > 0 else {"msg": "invalid request"}
             )
 
-        return Response(content=json_str, media_type='application/json')
+        return JSONResponse(content=response)
 
     @staticmethod
     async def not_found():
-        json_str = json.dumps({
+        response = {
             "msg": "Not found"
-        }, indent=4, default=str)
-        return Response(content=json_str, status_code=404)
+        }
+        return JSONResponse(content=response, status_code=404)

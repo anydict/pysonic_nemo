@@ -1,18 +1,21 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Event(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     event_name: str
     event_time: str
     call_id: str
     chan_id: str
     send_time: str
     token: str
-    info: dict
+    info: dict | object
 
 
-class EventCreate(BaseModel):
+class EventCreate(Event):
     class EventCreateInfo(BaseModel):
+        chan_id: str
         em_host: str
         em_port: int
         em_codec: str
@@ -32,46 +35,34 @@ class EventCreate(BaseModel):
         callback_host: str
         callback_port: int
 
-    event_name: str
-    event_time: str
-    call_id: str
-    chan_id: str
-    send_time: str
-    token: str
+    model_config = ConfigDict(from_attributes=True)
+
     info: EventCreateInfo
 
 
-class EventProgress(BaseModel):
+class EventProgress(Event):
     class EventProgressInfo(BaseModel):
         em_host: str
         em_port: int
         em_ssrc: int
 
-    event_name: str
-    event_time: str
-    call_id: str
-    chan_id: str
-    send_time: str
-    token: str
+    model_config = ConfigDict(from_attributes=True)
+
     info: EventProgressInfo
 
 
-class EventAnswer(BaseModel):
+class EventAnswer(Event):
     class EventAnswerInfo(BaseModel):
         em_host: str
         em_port: int
         em_ssrc: int
 
-    event_name: str
-    event_time: str
-    call_id: str
-    chan_id: str
-    send_time: str
-    token: str
+    model_config = ConfigDict(from_attributes=True)
+
     info: EventAnswerInfo
 
 
-class EventDetect(BaseModel):
+class EventDetect(Event):
     class EventDetectInfo(BaseModel):
         em_host: str
         em_port: int
@@ -81,25 +72,17 @@ class EventDetect(BaseModel):
         stop_words: list[str]
         stop_after_noise_and_silence: list[int]
 
-    event_name: str
-    event_time: str
-    call_id: str
-    chan_id: str
-    send_time: str
-    token: str
+    model_config = ConfigDict(from_attributes=True)
+
     info: EventDetectInfo
 
 
-class EventDestroy(BaseModel):
+class EventDestroy(Event):
     class EventDestroyInfo(BaseModel):
         em_host: str
         em_port: int
         em_ssrc: int
 
-    event_name: str
-    event_time: str
-    call_id: str
-    chan_id: str
-    send_time: str
-    token: str
+    model_config = ConfigDict(from_attributes=True)
+
     info: EventDestroyInfo

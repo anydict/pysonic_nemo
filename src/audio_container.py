@@ -44,6 +44,7 @@ class AudioContainer(Thread):
         self.em_port: int = em_port
         self.em_ssrc: int = em_ssrc
         self.call_id: str = ''
+        self.chan_id: str = ''
 
         self.event_create: Optional[http_models.EventCreate] = None
         self.event_progress: Optional[http_models.EventProgress] = None
@@ -117,6 +118,7 @@ class AudioContainer(Thread):
         self.event_create = event
         self.callpy_client = callpy_client
         self.call_id = event.call_id
+        self.chan_id = event.chan_id
         self.log.info(f'sample_rate={event.info.em_sample_rate} and sample_width={event.info.em_sample_width}')
 
     def add_event_progress(self, event: http_models.EventProgress):
@@ -223,18 +225,21 @@ class AudioContainer(Thread):
             self.max_amplitude_samples[fix_seq_num] = max(self.analyzed_samples[fix_seq_num])
             self.min_amplitude_samples[fix_seq_num] = min(self.analyzed_samples[fix_seq_num])
 
-            if self.analyzed_samples.get(fix_seq_num - 1):
-                diff = max(self.analyzed_samples[fix_seq_num]) - max(self.analyzed_samples[fix_seq_num - 1])
-                if max(self.analyzed_samples[fix_seq_num]) < 1000:
+            if fix_seq_num > self.seq_num_first_package:
+                curr = max(self.analyzed_samples[fix_seq_num])
+                last = max(self.analyzed_samples[fix_seq_num - 1])
+
+                if min(abs(curr), abs(last)) < 400:
                     self.trend_samples[fix_seq_num] = 0  # very small amplitude
-                elif diff < -1000:
-                    self.trend_samples[fix_seq_num] = 9  # x2decline
-                elif diff < 0:
-                    self.trend_samples[fix_seq_num] = 8  # decline
-                elif diff < 1000:
-                    self.trend_samples[fix_seq_num] = 1  # height
+                elif curr >= last:
+                    self.trend_samples[fix_seq_num] = min(self.trend_samples[fix_seq_num - 1] + 1, 5)
                 else:
-                    self.trend_samples[fix_seq_num] = 2  # x2height
+                    self.trend_samples[fix_seq_num] = 1
+            else:
+                if int(max(self.analyzed_samples[fix_seq_num])) < 400:
+                    self.trend_samples[fix_seq_num] = 0
+                else:
+                    self.trend_samples[fix_seq_num] = 1
 
         if len(self.packages_for_analyse) > 100:
             self.log.warning(f'find delay!!! packages_for_analyse={len(self.packages_for_analyse)}')
