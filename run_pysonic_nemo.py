@@ -11,8 +11,8 @@ import uvicorn
 from fastapi import FastAPI, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from loguru import logger
+from fastapi.middleware.cors import CORSMiddleware
 from starlette import status
-from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from src.api.routes import Routers
@@ -135,7 +135,7 @@ if __name__ == "__main__":
             return JSONResponse(content=response, status_code=404)
 
 
-        app.add_middleware(CORSMiddleware,
+        app.add_middleware(CORSMiddleware,  # noqa
                            allow_origins=[f"http://{config.app_api_host}:{config.app_api_port}"],
                            allow_credentials=True,
                            allow_methods=["*"],
