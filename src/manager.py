@@ -1,37 +1,57 @@
 import asyncio
-from datetime import datetime, timedelta
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from datetime import datetime
+from multiprocessing import Queue, Event
 from queue import Empty
 
 from loguru import logger
 
+import src.custom_models.http_models as http_models
 from src.audio_container import AudioContainer
-from src.client.callpy_client import CallPyClient
 from src.config import Config
 from src.custom_dataclasses.package import Package
-import src.custom_models.http_models as http_models
-from src.detection import Detection
+from src.detector import Detector
+from src.http_clients.callpy_client import CallPyClient
 
 
 class Manager(object):
     """He runs calls and send messages in rooms"""
 
-    def __init__(self, config: Config, mp_queue):
+    def __init__(self,
+                 config: Config,
+                 mp_queue: Queue,
+                 ppe: ProcessPoolExecutor,
+                 tpe: ThreadPoolExecutor,
+                 finish_event: Event):
         self.config: Config = config
+        self.mp_queue = mp_queue
+        self.ppe: ProcessPoolExecutor = ppe
+        self.tpe: ThreadPoolExecutor = tpe
+        self.finish_event: Event = finish_event
+
         self.callpy_clients: dict[str, CallPyClient] = {}
         self.queue_packages: list[Package] = []
-        self.mp_queue = mp_queue
-        self.app = config.app
-        self.log = logger.bind(object_id='manager')
+        self.log = logger.bind(object_id=self.__class__.__name__)
+
+        self.em_address_ssrc_with_chan_id: dict[str, str] = {}  # {em_address_ssrc: chan_id}
+        self.em_address_wait_ssrc: dict[str, str] = {}  # {em_address: chan_id}
         self.audio_containers: dict[str, AudioContainer] = {}
         self.stress_peak: int = 0
+        self.alloc_times: list[float] = []
 
     def __del__(self):
-        self.log.debug('object has died')
+        # DO NOT USE loguru here: https://github.com/Delgan/loguru/issues/712
+        if self.config.console_log:
+            print('Manager object has died')
 
     async def close_session(self):
         self.log.info('start close_session')
         self.config.alive = False
-        self.config.shutdown = True
+        self.config.wait_shutdown = True
+        self.finish_event.set()
+        self.ppe.shutdown()
 
         for callpy_client in self.callpy_clients.values():
             await callpy_client.close_session()
@@ -40,124 +60,171 @@ class Manager(object):
             self.log.info(f'unbind {key}')
             self.audio_containers.pop(key)
         self.log.info('end close_session')
+        await asyncio.sleep(4)
+
+    async def smart_sleep(self, delay: int):
+        for sec in range(0, delay):
+            if self.config.alive:
+                await asyncio.sleep(1)
 
     async def alive(self):
         while self.config.alive:
             self.log.info(f"alive")
-            await asyncio.sleep(60)
+            await self.smart_sleep(60)
+
+    async def save_result_into_db(self):
+        while self.config.alive:
+            self.log.info(f"save_result_into_db")
+            await self.smart_sleep(60)
 
     async def start_manager(self):
         self.log.info('start_manager')
-        sd = Detection(config=self.config, audio_containers=self.audio_containers)
-        sd.start()
 
-        while self.config.shutdown is False:
-            self.queue_packages: list[Package] = []
+        detector = Detector(config=self.config, audio_containers=self.audio_containers, ppe=self.ppe, tpe=self.tpe)
+        await detector.start_detection()
+
+        asyncio.create_task(self.alive())
+        asyncio.create_task(self.start_allocate())
+        asyncio.create_task(self.save_result_into_db())
+
+        try:
+            while self.config.wait_shutdown is False:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            self.log.warning('asyncio.CancelledError')
+
+        await asyncio.sleep(1.1)
+
+        self.log.info('start_dialer is end, go kill application')
+
+        # close FastAPI and our application
+        self.config.alive = False
+        current_pid = os.getpid()
+        os.kill(current_pid, 9)
+
+    async def start_allocate(self):
+        self.log.info('start_allocate')
+
+        package_wait_chan_id = []
+        while self.config.wait_shutdown is False:
+            await asyncio.sleep(0)
             try:
-                item = self.mp_queue.get_nowait()
-                self.queue_packages.extend(item)
+                self.queue_packages: list[Package] = self.mp_queue.get_nowait()
             except Empty:
-                pass
+                self.queue_packages: list[Package] = []
+                await asyncio.sleep(0.2)
+
+            t1 = time.monotonic()
+
+            if package_wait_chan_id:
+                self.queue_packages.extend(package_wait_chan_id)
+                package_wait_chan_id.clear()
 
             len_queue = len(self.queue_packages)
-
-            if len_queue == 0:
-                await asyncio.sleep(0.2)
-                continue
-
-            if len_queue > self.stress_peak + 5:
+            if len_queue > self.stress_peak + 99:
                 self.stress_peak = len_queue
                 self.log.debug(f'update stress peak={self.stress_peak}')
+            elif len_queue > 0:
+                self.stress_peak = min(0, self.stress_peak - 1)
+            else:
+                await asyncio.sleep(0.1)
+                continue
 
+            self.queue_packages.sort(key=lambda p: p.seq_num, reverse=False)
+
+            lose_packages = 0
             for package in self.queue_packages:
-                ssrc_host_port = f'{package.ssrc}@{package.unicast_host}:{package.unicast_port}'
-                if ssrc_host_port not in self.audio_containers:
-                    self.log.info(f'New AudioPackages {ssrc_host_port} payload_type={package.payload_type}')
-                    audio_packages = AudioContainer(config=self.config,
-                                                    em_host=package.unicast_host,
-                                                    em_port=package.unicast_port,
-                                                    em_ssrc=package.ssrc,
-                                                    first_seq_num=package.seq_num,
-                                                    length_payload=len(package.payload))
-                    audio_packages.start()
-                    audio_packages.append_package_for_analyse(package)
-                    self.audio_containers[ssrc_host_port] = audio_packages
+                if package.em_address_ssrc in self.em_address_ssrc_with_chan_id:
+                    chan_id = self.em_address_ssrc_with_chan_id[package.em_address_ssrc]
+                    if chan_id in self.audio_containers:
+                        audio_container = self.audio_containers[chan_id]
+                        audio_container.append_package_for_analyse(package)
+                elif package.em_address in self.em_address_wait_ssrc:
+                    chan_id = self.em_address_wait_ssrc.pop(package.em_address)
+                    self.em_address_ssrc_with_chan_id[package.em_address_ssrc] = chan_id
+                    if chan_id in self.audio_containers:
+                        audio_container = self.audio_containers[chan_id]
+                        audio_container.append_package_for_analyse(package)
+                elif datetime.now() < package.lose_time:
+                    package_wait_chan_id.append(package)
+                else:
+                    lose_packages += 1
 
-                elif ssrc_host_port in self.audio_containers:
-                    audio_packages = self.audio_containers[ssrc_host_port]
-                    audio_packages.append_package_for_analyse(package)
+            if lose_packages > 0:
+                self.log.warning(f"lose_packages: {lose_packages}")
+
+            self.alloc_times.append(time.monotonic() - t1)
+            if self.alloc_times[-1] > 1:
+                self.log.warning(f"Huge alloc_time: {self.alloc_times[-1]}")
+            elif len(self.alloc_times) > 400:
+                self.log.info(f"avg_alloc_time={self.alloc_times}/{len(self.alloc_times)} "
+                              f"max_alloc_time={max(self.alloc_times)}")
+                self.alloc_times.clear()
 
         self.log.info('END WHILE MANAGER')
 
-    async def start_event_create(self, event: http_models.EventCreate) -> str:
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
-        host_port = f'{event.info.em_host}:{event.info.em_port}'
-        em_ssrc = ''
-        stop_time = datetime.now() + timedelta(seconds=event.info.em_wait_seconds)
+    def start_event_create(self, event: http_models.EventCreate) -> bool:
+        em_address = f'{event.info.em_host}:{event.info.em_port}'
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} em_address={em_address}')
 
-        address = f'{event.info.callback_host}:{event.info.callback_port}'
-        if address not in self.callpy_clients:
+        callback_address = f'{event.info.callback_host}:{event.info.callback_port}'
+
+        if callback_address not in self.callpy_clients:
             self.log.debug('start create callpy_client')
             callpy_client = CallPyClient(event.info.callback_host, event.info.callback_port)
-            self.callpy_clients[address] = callpy_client
+            self.callpy_clients[callback_address] = callpy_client
         else:
-            self.log.debug('callpy_client already exists')
+            self.log.debug(f'callpy_client {callback_address} already exists')
 
-        while em_ssrc == '' and stop_time > datetime.now():
-            for ssrc_host_port in self.audio_containers:
-                if host_port in ssrc_host_port and self.audio_containers[ssrc_host_port].call_id == '':
-                    audio_packages = self.audio_containers[ssrc_host_port]
-                    audio_packages.add_event_create(event, self.callpy_clients[address])
-                    em_ssrc = audio_packages.em_ssrc
-            await asyncio.sleep(0.5)
+        callpy_client = self.callpy_clients[callback_address]
+        self.em_address_wait_ssrc[em_address] = event.chan_id
+        self.audio_containers[event.chan_id] = AudioContainer(config=self.config,
+                                                              em_host=event.info.em_host,
+                                                              em_port=event.info.em_port,
+                                                              call_id=event.call_id,
+                                                              chan_id=event.chan_id,
+                                                              event_create=event,
+                                                              callpy_client=callpy_client,
+                                                              tpe=self.tpe)
 
-        if em_ssrc == '':
-            self.log.error(f'for call_id={event.call_id} not found audio_packages')
-            self.log.error(f'{event.call_id} >> {event.info.em_host}:{event.info.em_port}')
+        return True
 
-        return em_ssrc
+    def start_event_progress(self, event: http_models.EventProgress) -> bool:
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-    async def start_event_progress(self, event: http_models.EventProgress) -> bool:
-        ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
-
-        if ssrc_host_port in self.audio_containers:
-            audio_packages = self.audio_containers[ssrc_host_port]
-            audio_packages.add_event_progress(event)
+        if event.chan_id in self.audio_containers:
+            self.audio_containers[event.chan_id].add_event_progress(event)
             return True
         else:
+            self.log.error(f'chan_id={event.chan_id} not found')
             return False
 
-    async def start_event_answer(self, event: http_models.EventAnswer) -> bool:
-        ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
+    def start_event_answer(self, event: http_models.EventAnswer) -> bool:
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if ssrc_host_port in self.audio_containers:
-            audio_packages = self.audio_containers[ssrc_host_port]
-            audio_packages.add_event_answer(event)
+        if event.chan_id in self.audio_containers:
+            self.audio_containers[event.chan_id].add_event_answer(event)
             return True
         else:
-            self.log.error(f'ssrc_host_port={ssrc_host_port} not found')
+            self.log.error(f'chan_id={event.chan_id} not found')
             return False
 
-    async def start_event_detect(self, event: http_models.EventDetect) -> bool:
-        ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
+    def start_event_detect(self, event: http_models.EventDetect) -> bool:
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if ssrc_host_port in self.audio_containers:
-            audio_packages = self.audio_containers[ssrc_host_port]
-            audio_packages.add_event_detect(event)
+        if event.chan_id in self.audio_containers:
+            self.audio_containers[event.chan_id].add_event_detect(event)
             return True
         else:
+            self.log.error(f'chan_id={event.chan_id} not found')
             return False
 
-    async def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
-        ssrc_host_port = f'{event.info.em_ssrc}@{event.info.em_host}:{event.info.em_port}'
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} ssrc_host_port={ssrc_host_port}')
+    def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if ssrc_host_port in self.audio_containers:
-            audio_packages = self.audio_containers[ssrc_host_port]
-            audio_packages.add_event_destroy(event)
+        if event.chan_id in self.audio_containers:
+            self.audio_containers[event.chan_id].add_event_destroy(event)
             return True
         else:
+            self.log.error(f'chan_id={event.chan_id} not found')
             return False

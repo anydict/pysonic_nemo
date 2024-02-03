@@ -1,5 +1,6 @@
-import numpy as np
 from typing import Optional
+
+import numpy as np
 
 from src.fingerprint_mining import get_fingerprint
 
@@ -12,8 +13,8 @@ class Template(object):
                  trim_first_low_amplitudes: bool = True,
                  add_first_silence_sample: bool = False,
                  limit_samples: Optional[int] = None,
-                 sample_size: int = 320,
-                 sample_rate: int = 16000):
+                 sample_size: int = 160,
+                 sample_rate: int = 8000):
         self.template_id: int = template_id
         self.template_name: str = template_name
         self.sample_size = sample_size
@@ -32,7 +33,7 @@ class Template(object):
                 break
 
         if add_first_silence_sample:
-            for _ in range(0, 320):
+            for _ in range(0, 160):
                 amplitudes.insert(0, 0)
 
         self.count_samples: int = len(amplitudes) // sample_size
@@ -48,19 +49,13 @@ class Template(object):
         self.max_amp_samples: dict[int, int] = {k: max(v) for k, v in self.samples.items()}
         # self.trend_samples: dict[int, int] = self.convert_samples2trend(samples=self.samples)
         # self.trend_str: str = self.trend_dict2trend_string(trend_samples=self.trend_samples)
-        #
         # self.zcross: dict[int, int] = self.ger_zero_crossing(samples=self.samples)
-        # self.zcross_str: str = self.zcross2zcross_string(zcross=self.zcross)
 
         # self.fingerprint.save_print2png(print_name=self.template_name)
 
     @staticmethod
     def trend_dict2trend_string(trend_samples: dict[int, int]) -> str:
         return ''.join([str(a) for a in trend_samples.values()])
-
-    @staticmethod
-    def zcross2zcross_string(zcross: dict[int, int]) -> str:
-        return ''.join([str(a // 10) for a in zcross.values()])
 
     @staticmethod
     def ger_zero_crossing(samples: dict[int, list]) -> dict[int, int]:
@@ -82,7 +77,7 @@ class Template(object):
     @staticmethod
     def convert_samples2trend(samples: dict[int, list]) -> dict[int, int]:
         trend_samples: dict[int, int] = {}
-        for seq_num in range(min(samples), max(samples) + 1):
+        for seq_num in sorted(samples.keys()):
 
             if seq_num > min(samples):
                 curr = int(max(samples[seq_num]))
@@ -132,11 +127,11 @@ class Template(object):
         with wave.open(path, 'wb') as f:
             f.setnchannels(1)  # mono
             f.setsampwidth(2)
-            f.setframerate(16000)
+            f.setframerate(8000)
 
             dict_bytes = self.convert_samples2dict_bytes(samples=samples)
 
-            for seq_num in range(min(samples), max(samples) + 1):
+            for seq_num in sorted(samples.keys()):
                 f.writeframes(dict_bytes[seq_num])
 
     @staticmethod
@@ -151,7 +146,7 @@ class Template(object):
         from struct import pack
 
         bytes_samples: dict[int, bytes] = {}
-        for seq_num in range(min(samples), max(samples) + 1):
+        for seq_num in sorted(samples.keys()):
             b = b''
             for amp in samples[seq_num]:
                 b += pack('<h', amp)

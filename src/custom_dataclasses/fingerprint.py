@@ -1,9 +1,11 @@
 import os.path
-import pathlib
 import statistics
 from dataclasses import dataclass
-import numpy as np
+from datetime import datetime
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib import use
 
 
@@ -33,7 +35,7 @@ class FingerPrint(object):
         if len(self.first_points) == 0:
             return
 
-        pathlib.Path(print_folder).mkdir(parents=True, exist_ok=True)
+        Path(print_folder).mkdir(parents=True, exist_ok=True)
         full_path = os.path.join(print_folder, f"{print_name}.png")
 
         use('agg')
@@ -63,41 +65,49 @@ class FingerPrint(object):
 
         median = statistics.median(hashes_diff_offset.values())
         for h in list(hashes_diff_offset.keys()):
-            if hashes_diff_offset[h] - median in range(-3, 3):
+            if hashes_diff_offset[h] - median == 0:
                 continue
-            # print(f"delete shift: {h} || {hashes_diff_offset}")
             hashes_diff_offset.pop(h)
         correct_hashes_offsets = {h: o for h, o in source_hashes_offsets.items() if h in hashes_diff_offset}
 
         return correct_hashes_offsets, median
 
-    def save_matching_print2png(self,
+    @staticmethod
+    def save_matching_print2png(first_points: dict[str, tuple[int, int]],
+                                second_points: dict[str, tuple[int, int]],
+                                arr2d: np.array,
                                 hashes: list[str],
                                 print_name: str,
-                                print_folder: str = 'fingerprint_template',
+                                save_folder: str = 'fingerprint_template',
                                 shift_line: int | None = None):
-        matching_points: set[tuple[int, int]] = set()
-        for h in hashes:
-            if h in self.first_points.keys():
-                matching_points.add(self.first_points[h])
-                matching_points.add(self.second_points[h])
+        try:
+            matching_points: set[tuple[int, int]] = set()
+            for h in hashes:
+                if h in first_points.keys():
+                    matching_points.add(first_points[h])
+                    matching_points.add(second_points[h])
 
-        if len(matching_points) == 0:
-            return
+            if len(matching_points) == 0:
+                return
 
-        pathlib.Path(print_folder).mkdir(parents=True, exist_ok=True)
-        full_path = os.path.join(print_folder, f"{print_name}.png")
+            sysdate = datetime.now()
+            path = os.path.join(save_folder, str(sysdate.year), str(sysdate.month), str(sysdate.day), str(sysdate.hour))
 
-        use('agg')
-        fig, ax = plt.subplots()
-        plt.axvline(x=shift_line, color='r', label='start_found')
+            if Path(path).is_dir() is False:
+                Path(path).mkdir(parents=True, exist_ok=True)
+            path_with_name = os.path.join(path, f"{print_name}.png")
 
-        ax.set_title(print_name)
-        ax.set_aspect(0.1)
-        ax.pcolor(self.arr2d)
+            use('agg')
+            fig, ax = plt.subplots()
+            plt.axvline(x=shift_line, color='r', label='start_found')
 
-        x, y = zip(*matching_points)
-        ax.scatter(x, y, c="g")
+            ax.set_title(print_name)
+            ax.pcolor(arr2d)
 
-        fig.savefig(full_path)
-        plt.close(fig)
+            x, y = zip(*matching_points)
+            ax.scatter(x, y, c="g")
+
+            fig.savefig(path_with_name)
+            plt.close(fig)
+        except Exception as e:
+            print(f'ERROR! [save_matching_print2png] Exception detail: {e}')

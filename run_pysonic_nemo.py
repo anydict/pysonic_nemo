@@ -1,56 +1,57 @@
 import asyncio
-import multiprocessing
 import os
 import platform
 import sys
 import uuid
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime
+from multiprocessing import Queue, Event
 
 import uvicorn
 from fastapi import FastAPI, Request, Depends
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from loguru import logger
+from starlette import status
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 from src.api.routes import Routers
-from src.config import Config
+from src.config import Config, filter_error_log
 from src.manager import Manager
 from src.unicast_server import UnicastServer
-
-manager = None
-config_path = os.path.join('config', 'config.json')
-
-mp_queue = multiprocessing.Queue()
-finish_event = multiprocessing.Event()
 
 
 async def app_startup():
     """Run our application"""
-    global manager
-    manager = Manager(config=config, mp_queue=mp_queue)
-    routers = Routers(config=config, manager=manager)
+
+    mp_queue = Queue()
+    finish_event = Event()
+    unicast_server = UnicastServer(config=config, mp_queue=mp_queue, finish_event=finish_event)
+    unicast_server.start()
+
+    ppe = ProcessPoolExecutor(max_workers=os.cpu_count())
+    tpe = ThreadPoolExecutor()
+    ppe.map(sorted, [0] * os.cpu_count())  # warmup
+
+    app.manager = Manager(config=config, mp_queue=mp_queue, ppe=ppe, tpe=tpe, finish_event=finish_event)
+    routers = Routers(config=config, manager=app.manager)
     app.include_router(routers.router, dependencies=[Depends(logging_dependency)])
 
-    asyncio.create_task(manager.start_manager())
-    asyncio.create_task(manager.alive())
+    asyncio.create_task(app.manager.start_manager())
 
 
 async def app_shutdown():
-    finish_event.set()
-    if isinstance(manager, Manager):
-        await manager.close_session()
+    """Run when application wait_shutdown"""
+
+    if hasattr(app, 'manager') and isinstance(app.manager, Manager):
+        await app.manager.close_session()
 
 
 async def logging_dependency(request: Request):
     api_id = str(uuid.uuid4())
-    logger.debug(f"api_id={api_id} {request.method} {request.url}")
-    logger.debug(f"api_id={api_id} Params:")
-    for name, value in request.path_params.items():
-        logger.debug(f"api_id={api_id}\t{name}: {value}")
-    logger.debug(f"api_id={api_id} Headers:")
-    for name, value in request.headers.items():
-        logger.debug(f"api_id={api_id}\t{name}: {value}")
+    logger.debug(f"api_id={api_id} {request.method} {request.url} body: {await request.body()}")
+    logger.debug(f"api_id={api_id} Params: {request.path_params.items()}")
+    logger.debug(f"api_id={api_id} Headers: {request.headers.items()}")
 
 
 async def custom_validation_exception_handler(request: Request,
@@ -61,56 +62,53 @@ async def custom_validation_exception_handler(request: Request,
     @param request: API request
     @param exc: Error information
     """
-    errors = []
+    errors = ['ValidationError']
     for error in exc.errors():
         errors.append({
             'loc': error['loc'],
             'msg': error['msg'],
             'type': error['type']
         })
-    logger.error(f"ValidationError in path: {request.url.path}")
+    logger.error(f"ValidationError in path: {request.url.path} request_body: {await request.body()}")
     logger.error(f"ValidationError detail: {errors}")
     logger.error(f"ValidationError client_info: {request.client}")
     logger.error(request.headers)
 
-    request_body = await request.body()
-    logger.error(request_body)
-
-    return await request_validation_exception_handler(request, exc)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"status": "error", "msg": " ### ".join(errors)}
+    )
 
 
 if __name__ == "__main__":
     try:
+        config_path = os.path.join('config', 'config.json')
         config = Config(config_path=config_path)
 
         logger.configure(extra={"object_id": "None"})  # Default values if not bind extra variable
         logger.remove()  # this removes duplicates in the console if we use custom log format
 
-        custom_log_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>[<level>{level}</level>]" \
-                            "<cyan>[{extra[object_id]}]</cyan>" \
-                            "<magenta>{name}</magenta>:<magenta>{function}</magenta>:" \
-                            "<cyan>{line}</cyan> - <level>{message}</level>"
-
         # for console
-        if config.log_console:
+        if config.console_log:
             logger.add(sink=sys.stdout,
-                       filter=lambda record: record["level"].name == record["level"].name,
-                       format=custom_log_format,
+                       format=config.log_format,
                        colorize=True)
         # different files for different message types
         logger.add(sink="logs/error.log",
-                   filter=lambda record: record["level"].name == "ERROR",
-                   rotation="1000 MB",
+                   filter=filter_error_log,
+                   rotation="500 MB",
                    compression='gz',
-                   format=custom_log_format)
+                   format=config.log_format)
         logger.add(sink=f"logs/{config.app}.log",
-                   rotation="1000 MB",
+                   rotation="500 MB",
                    compression='gz',
-                   format=custom_log_format)
+                   retention=10,
+                   format=config.log_format)
 
-        logger = logger.bind(object_id='main')
+        logger = logger.bind(object_id=os.path.basename(__file__))
 
-        app = FastAPI(exception_handlers={RequestValidationError: custom_validation_exception_handler})
+        app = FastAPI(exception_handlers={RequestValidationError: custom_validation_exception_handler},
+                      version=config.app_version)
 
 
         @app.middleware("http")
@@ -124,6 +122,17 @@ if __name__ == "__main__":
             response.headers['X-Process-Time'] = str(process_time)
             response.headers['Cache-Control'] = 'no-cache, no-store'
             return response
+
+
+        @app.exception_handler(404)
+        async def custom_404_handler(request: Request, __):
+            msg = f"{request.method} API handler for {request.url} not found"
+            logger.warning(msg)
+            response = {
+                "status": "error",
+                "msg": msg
+            }
+            return JSONResponse(content=response, status_code=404)
 
 
         app.add_middleware(CORSMiddleware,
@@ -140,7 +149,11 @@ if __name__ == "__main__":
         logger.info(f"Machine: {uname.machine}")
         logger.info(f"Parent pid: {os.getppid()}")
         logger.info(f"Current pid: {os.getpid()}")
-        logger.info(f"API bind address: {config.app_api_host}:{config.app_api_port}")
+        logger.info(f"API bind address: http://{config.app_api_host}:{config.app_api_port}")
+        logger.info(f"Docs Swagger API address: http://{config.app_api_host}:{config.app_api_port}/docs")
+        logger.info(f"RTP SERVER bind address: http://{config.app_unicast_host}:{config.app_unicast_port}")
+        logger.info(f"App Version: {config.app_version}")
+        logger.info(f"Python Version: {config.python_version}")
 
         uvicorn_log_config = uvicorn.config.LOGGING_CONFIG
         del uvicorn_log_config["loggers"]

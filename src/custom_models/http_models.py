@@ -41,48 +41,24 @@ class EventCreate(Event):
 
 
 class EventProgress(Event):
-    class EventProgressInfo(BaseModel):
-        em_host: str
-        em_port: int
-        em_ssrc: int
-
     model_config = ConfigDict(from_attributes=True)
 
-    info: EventProgressInfo
+    info: dict
 
 
 class EventAnswer(Event):
-    class EventAnswerInfo(BaseModel):
-        em_host: str
-        em_port: int
-        em_ssrc: int
-
     model_config = ConfigDict(from_attributes=True)
 
-    info: EventAnswerInfo
+    info: dict
 
 
 class EventDetect(Event):
-    class EventDetectInfo(BaseModel):
-        em_host: str
-        em_port: int
-        em_ssrc: int
-        from_detect_time: str
-        to_detect_time: str
-        stop_words: list[str]
-        stop_after_noise_and_silence: list[int]
-
     model_config = ConfigDict(from_attributes=True)
 
-    info: EventDetectInfo
+    info: dict
 
 
 class EventDestroy(Event):
-    class EventDestroyInfo(BaseModel):
-        em_host: str
-        em_port: int
-        em_ssrc: int
-
     model_config = ConfigDict(from_attributes=True)
 
-    info: EventDestroyInfo
+    info: dict
