@@ -13,7 +13,7 @@ class CallPyClient(BaseClient):
         self.host = host
         self.port = port
         self.session = aiohttp.ClientSession()
-        self.log = logger.bind(object_id=f'self.__class__.__name__@{host}:{port}')
+        self.log = logger.bind(object_id=f'{self.__class__.__name__}@{host}:{port}')
         asyncio.create_task(self.check_diag())
 
     @property

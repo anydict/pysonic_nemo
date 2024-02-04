@@ -37,9 +37,9 @@ class UnicastServer(Process):
 
     def send_buffer(self):
         if len(self.buffer_queue) > 0:
-            self.mp_queue.put_nowait(self.buffer_queue.copy())
+            self.mp_queue.put_nowait(self.buffer_queue)
             self.buffer_send_time = time.monotonic()
-            self.buffer_queue.clear()
+            self.buffer_queue = []
         if time.monotonic() - self.alive_time > 30:
             self.log.info(f"alive, count_received={self.count_received}")
             self.alive_time = time.monotonic()

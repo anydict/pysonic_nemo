@@ -3,7 +3,7 @@ import functools
 import os
 import time
 from asyncio import AbstractEventLoop
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future
 from datetime import datetime
 
 import soundfile
@@ -28,22 +28,25 @@ class Detector(object):
         self.ppe: ProcessPoolExecutor = ppe
         self.tpe: ThreadPoolExecutor = tpe
 
+        self.executor_tasks: list[Future] = []
+        self.executor_times: list[float] = []
+        self.detection_times: list[float] = []
         self.templates: dict[str, Template] = {}
         self.all_templates_hash: dict[str, list[str]] = {}
         self.chan_id_with_amps: dict[str, list[int]] = {}
         self.result = {}
-        self.times: list[float] = []
         self.event_loop: AbstractEventLoop = asyncio.get_running_loop()
         self.log = logger.bind(object_id=self.__class__.__name__)
         self.log.info(f'init Detection')
 
     async def start_detection(self):
         self.log.info("start_detection")
-        self.load_samples()
+        self.load_templates()
         asyncio.create_task(self.start_loop())
+        asyncio.create_task(self.run_detection())
 
-    def load_samples(self):
-        self.log.info('start load_samples')
+    def load_templates(self):
+        self.log.info('start load_templates')
         folder = '/home/anydict/PycharmProjects/pysonic_nemo/tests/templates/enable'
         file_list = [file for file in os.listdir(folder) if file.endswith('.wav')]
 
@@ -76,8 +79,9 @@ class Detector(object):
                 # else:
                 #     if os.path.isfile(b_file_path):
                 #         os.remove(a_file_path)
-        self.log.info('end load_samples')
-        self.log.info(f"count hashes: {len(self.all_templates_hash)}, count templates: {len(self.templates)}")
+        self.log.info(f"end load_templates, "
+                      f"count hashes: {len(self.all_templates_hash)}, "
+                      f"count templates: {len(self.templates)}")
 
     async def start_loop(self):
         self.log.info("start loop for prepare amplitudes and detection")
@@ -85,7 +89,7 @@ class Detector(object):
             await asyncio.sleep(0.1)
             await self.run_prepare_amplitude()
             await asyncio.sleep(0.1)
-            await self.run_detection()
+            await self.add_amps_in_executor()
         self.log.info("end start_loop")
 
     async def run_prepare_amplitude(self):
@@ -127,7 +131,7 @@ class Detector(object):
 
         # self.log.info(f"len self.chan_id_with_amps={self.chan_id_with_amps}")
 
-    async def run_detection(self):
+    async def add_amps_in_executor(self):
         if len(self.audio_containers) == 0:
             return
         elif len(self.chan_id_with_amps) == 0:
@@ -136,36 +140,60 @@ class Detector(object):
         t1 = time.monotonic()
 
         self.log.info("BEFORE run_in_executor")
-        tasks = []
         for chan_id, ac_amps in self.chan_id_with_amps.items():
-            if time.monotonic() - t1 > 0.5:
-                await asyncio.sleep(0.1)
             task = self.event_loop.run_in_executor(self.ppe, get_fingerprint, chan_id, ac_amps)
-            tasks.append(task)
-
-        self.chan_id_with_amps.clear()
-
-        for task in asyncio.as_completed(tasks):
-            fingerprint: FingerPrint = await task
-
-            found_template = self.analise_fingerprint(fingerprint)
-            chan_id = fingerprint.print_name
-            audio_container = self.audio_containers.get(chan_id)
-            if audio_container is None:
-                continue
-            audio_container.duration_check_detect += time.monotonic() - t1
-
-            if found_template is not None:
-                self.log.success(f"{fingerprint.print_name}, {found_template}")
-                self.audio_containers[fingerprint.print_name].add_found_template(found_template)
+            self.executor_tasks.append(task)
 
         t2 = time.monotonic()
-        self.times.append(t2 - t1)
+        self.executor_times.append(t2 - t1)
+
         if t2 - t1 > 1:
             self.log.warning(f"Huge time detection! {t2 - t1}")
-        elif len(self.times) > 200:
-            self.log.info(f"detection max_time={max(self.times)} avg_time={sum(self.times) / len(self.times)}")
-            self.times.clear()
+        elif len(self.executor_times) > 10:
+            self.log.info(f"executor_times={max(self.executor_times)} "
+                          f"avg_time={sum(self.executor_times) / len(self.executor_times)} "
+                          f"max_time={max(self.executor_times)}")
+            self.executor_times.clear()
+
+        self.chan_id_with_amps.clear()
+        await asyncio.sleep(0.1)
+
+    async def run_detection(self):
+        self.log.info('start run_detection')
+        while self.config.wait_shutdown is False:
+            if len(self.executor_tasks) == 0:
+                await asyncio.sleep(0.1)
+                continue
+
+            t1 = time.monotonic()
+            for task in asyncio.as_completed(self.executor_tasks):
+
+                fingerprint: FingerPrint = await task
+
+                found_template = self.analise_fingerprint(fingerprint)
+                chan_id = fingerprint.print_name
+                audio_container = self.audio_containers.get(chan_id)
+                if audio_container is None:
+                    continue
+
+                audio_container.duration_check_detect += time.monotonic() - t1
+
+                if found_template is not None:
+                    self.audio_containers[fingerprint.print_name].add_found_template(found_template)
+
+            t2 = time.monotonic()
+            self.detection_times.append(t2 - t1)
+
+            if len(self.detection_times) > 10:
+                self.log.info(f"detection_times={max(self.detection_times)} "
+                              f"avg_time={sum(self.detection_times) / len(self.detection_times)} "
+                              f"max_time={max(self.detection_times)}")
+                self.detection_times.clear()
+
+            for task in self.executor_tasks.copy():
+                if task.done():
+                    self.executor_tasks.remove(task)
+        self.log.info('end run_detection')
 
     def analise_fingerprint(self,
                             ac_print: FingerPrint,
@@ -208,7 +236,7 @@ class Detector(object):
             self.log.success(f'len points:{len(timely_hashes)} template:{template_name} chan_id:{ac_print.print_name} '
                              f'len offset_times: {len(offset_times)}, count_start_points: {count_start_points}')
 
-            if real_search:
+            if real_search and self.config.save_png_match_detection:
                 args = functools.partial(ac_print.save_matching_print2png,
                                          first_points=ac_print.first_points,
                                          second_points=ac_print.second_points,

@@ -62,19 +62,19 @@ class Routers(object):
         try:
             if event.event_name == 'CREATE':
                 event = EventCreate.model_validate(event)
-                success = self.manager.start_event_create(event)
+                success = await self.manager.start_event_create(event)
             elif event.event_name == 'PROGRESS':
                 event = EventProgress.model_validate(event)
-                success = self.manager.start_event_progress(event)
+                success = await self.manager.start_event_progress(event)
             elif event.event_name == 'ANSWER':
                 event = EventAnswer.model_validate(event)
-                success = self.manager.start_event_answer(event)
+                success = await self.manager.start_event_answer(event)
             elif event.event_name == 'DETECT':
                 event = EventDetect.model_validate(event)
-                success = self.manager.start_event_detect(event)
+                success = await self.manager.start_event_detect(event)
             elif event.event_name == 'DESTROY':
                 event = EventDestroy.model_validate(event)
-                success = self.manager.start_event_destroy(event)
+                success = await self.manager.start_event_destroy(event)
             else:
                 return Response(content=json.dumps({"msg": "Event not found"}), status_code=404)
 

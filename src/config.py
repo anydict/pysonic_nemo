@@ -41,7 +41,8 @@ class Config(object):
         "app_unicast_host": "127.0.0.1",
         "app_unicast_port": 1234,
         "app_unicast_protocol": "udp",
-        "app_unicast_buffer_size": 1024
+        "app_unicast_buffer_size": 1024,
+        "save_png_match_detection": True
     }
 
     def __init__(self, config_path: str = ''):
@@ -74,6 +75,7 @@ class Config(object):
         self.app_unicast_port: int = int(self.new_config['app_unicast_port'])
         self.app_unicast_protocol: str = str(self.new_config['app_unicast_protocol'])
         self.app_unicast_buffer_size: int = int(self.new_config['app_unicast_buffer_size'])
+        self.save_png_match_detection: int = int(self.new_config['save_png_match_detection'])
 
     def get_different_type_variables(self) -> list:
         different: list[str] = []

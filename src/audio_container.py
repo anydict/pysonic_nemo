@@ -56,7 +56,7 @@ class AudioContainer(object):
 
         self.packages_for_analyse: list[Package] = []
         self.bytes_samples: dict[int, bytes] = {}
-        self.analyzed_samples: dict[int, list] = {}
+        self.analyzed_samples: dict[int, list[int]] = {}
         self.max_amplitude_samples: dict[int, int] = {}
         self.min_amplitude_samples: dict[int, int] = {}
 
@@ -88,6 +88,7 @@ class AudioContainer(object):
         self.log.info(f'init AudioPackages call_id: {call_id} chan_id:{chan_id}')
 
     def add_found_template(self, name: str):
+        self.log.info(f'found template with name={name}')
         self.detect_until_time = datetime.now()
         self.found_templates = name
 
@@ -127,7 +128,8 @@ class AudioContainer(object):
 
     def add_event_answer(self, event: http_models.EventAnswer):
         self.event_answer = event
-        self.detect_until_time = datetime.now() + timedelta(seconds=33)
+        if datetime.now() < self.detect_until_time:
+            self.detect_until_time = datetime.now() + timedelta(seconds=15)
 
         create_datetime = datetime.fromisoformat(self.event_create.event_time)
         answer_datetime = datetime.fromisoformat(event.event_time)
@@ -149,7 +151,10 @@ class AudioContainer(object):
         self.log.info("begin start_parse")
         try:
             while self.config.alive and datetime.now() < self.break_while_time:
-                await asyncio.sleep(0.2)
+                if self.event_answer:
+                    await asyncio.sleep(0.2)
+                else:
+                    await asyncio.sleep(0.5)
 
                 self.check_end()
                 self.fast_build()
@@ -159,10 +164,10 @@ class AudioContainer(object):
                     self.find_seq_num_first_beep()
                     self.find_amp_adc_noise()
 
-                if self.event_answer is not None:
-                    self.find_seq_num_voice_before_answer()
-                else:
+                if self.event_answer:
                     self.find_seq_num_noise_after_answer()
+                else:
+                    self.find_seq_num_voice_before_answer()
 
         except Exception as e:
             self.log.error(e)
@@ -351,7 +356,8 @@ class AudioContainer(object):
                 "get_duration_one_sample": self.get_duration_one_sample(),
                 "amp_adc_noise": self.amp_adc_noise,
                 "len_parse_packs": len(self.max_amplitude_samples),
-                "len_raw_packs": len(self.packages_for_analyse)
+                "len_raw_packs": len(self.packages_for_analyse),
+                "duration_check_detect": self.duration_check_detect
             }
             self.log.success(f'info: {json.dumps(info)}')
 

@@ -32,7 +32,7 @@ class Manager(object):
         self.finish_event: Event = finish_event
 
         self.callpy_clients: dict[str, CallPyClient] = {}
-        self.queue_packages: list[Package] = []
+        self.packages_queue: list[Package] = []
         self.log = logger.bind(object_id=self.__class__.__name__)
 
         self.em_address_ssrc_with_chan_id: dict[str, str] = {}  # {em_address_ssrc: chan_id}
@@ -80,7 +80,10 @@ class Manager(object):
     async def start_manager(self):
         self.log.info('start_manager')
 
-        detector = Detector(config=self.config, audio_containers=self.audio_containers, ppe=self.ppe, tpe=self.tpe)
+        detector = Detector(config=self.config,
+                            audio_containers=self.audio_containers,
+                            ppe=self.ppe,
+                            tpe=self.tpe)
         await detector.start_detection()
 
         asyncio.create_task(self.alive())
@@ -109,31 +112,31 @@ class Manager(object):
         while self.config.wait_shutdown is False:
             await asyncio.sleep(0)
             try:
-                self.queue_packages: list[Package] = self.mp_queue.get_nowait()
+                self.packages_queue: list[Package] = self.mp_queue.get_nowait()
             except Empty:
-                self.queue_packages: list[Package] = []
+                self.packages_queue: list[Package] = []
                 await asyncio.sleep(0.2)
 
             t1 = time.monotonic()
 
             if package_wait_chan_id:
-                self.queue_packages.extend(package_wait_chan_id)
+                self.packages_queue.extend(package_wait_chan_id)
                 package_wait_chan_id.clear()
 
-            len_queue = len(self.queue_packages)
+            len_queue = len(self.packages_queue)
             if len_queue > self.stress_peak + 99:
                 self.stress_peak = len_queue
                 self.log.debug(f'update stress peak={self.stress_peak}')
             elif len_queue > 0:
-                self.stress_peak = min(0, self.stress_peak - 1)
+                self.stress_peak = max(0, self.stress_peak - 1)
             else:
                 await asyncio.sleep(0.1)
                 continue
 
-            self.queue_packages.sort(key=lambda p: p.seq_num, reverse=False)
+            self.packages_queue.sort(key=lambda p: p.seq_num, reverse=False)
 
             lose_packages = 0
-            for package in self.queue_packages:
+            for package in self.packages_queue:
                 if package.em_address_ssrc in self.em_address_ssrc_with_chan_id:
                     chan_id = self.em_address_ssrc_with_chan_id[package.em_address_ssrc]
                     if chan_id in self.audio_containers:
@@ -163,7 +166,7 @@ class Manager(object):
 
         self.log.info('END WHILE MANAGER')
 
-    def start_event_create(self, event: http_models.EventCreate) -> bool:
+    async def start_event_create(self, event: http_models.EventCreate) -> bool:
         em_address = f'{event.info.em_host}:{event.info.em_port}'
         self.log.info(f'event_name={event.event_name} and call_id={event.call_id} em_address={em_address}')
 
@@ -189,42 +192,54 @@ class Manager(object):
 
         return True
 
-    def start_event_progress(self, event: http_models.EventProgress) -> bool:
+    async def start_event_progress(self, event: http_models.EventProgress) -> bool:
         self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if event.chan_id in self.audio_containers:
-            self.audio_containers[event.chan_id].add_event_progress(event)
-            return True
-        else:
-            self.log.error(f'chan_id={event.chan_id} not found')
-            return False
+        for _ in range(0, 5):
+            if event.chan_id in self.audio_containers:
+                self.audio_containers[event.chan_id].add_event_progress(event)
+                return True
+            else:
+                await asyncio.sleep(0.2)
 
-    def start_event_answer(self, event: http_models.EventAnswer) -> bool:
+        self.log.error(f'chan_id={event.chan_id} not found')
+        return False
+
+    async def start_event_answer(self, event: http_models.EventAnswer) -> bool:
         self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if event.chan_id in self.audio_containers:
-            self.audio_containers[event.chan_id].add_event_answer(event)
-            return True
-        else:
-            self.log.error(f'chan_id={event.chan_id} not found')
-            return False
+        for _ in range(0, 5):
+            if event.chan_id in self.audio_containers:
+                self.audio_containers[event.chan_id].add_event_answer(event)
+                return True
+            else:
+                await asyncio.sleep(0.2)
 
-    def start_event_detect(self, event: http_models.EventDetect) -> bool:
+        self.log.error(f'chan_id={event.chan_id} not found')
+        return False
+
+    async def start_event_detect(self, event: http_models.EventDetect) -> bool:
         self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if event.chan_id in self.audio_containers:
-            self.audio_containers[event.chan_id].add_event_detect(event)
-            return True
-        else:
-            self.log.error(f'chan_id={event.chan_id} not found')
-            return False
+        for _ in range(0, 5):
+            if event.chan_id in self.audio_containers:
+                self.audio_containers[event.chan_id].add_event_detect(event)
+                return True
+            else:
+                await asyncio.sleep(0.2)
 
-    def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
+        self.log.error(f'chan_id={event.chan_id} not found')
+        return False
+
+    async def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
         self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
 
-        if event.chan_id in self.audio_containers:
-            self.audio_containers[event.chan_id].add_event_destroy(event)
-            return True
-        else:
-            self.log.error(f'chan_id={event.chan_id} not found')
-            return False
+        for _ in range(0, 5):
+            if event.chan_id in self.audio_containers:
+                self.audio_containers[event.chan_id].add_event_destroy(event)
+                return True
+            else:
+                await asyncio.sleep(0.2)
+
+        self.log.error(f'chan_id={event.chan_id} not found')
+        return False
