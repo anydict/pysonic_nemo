@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, status
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import ValidationError
 
@@ -27,13 +27,13 @@ class Routers(object):
 
     async def get_diag(self):
         response = {
-            "app": self.config.app,
-            "wait_shutdown": self.config.wait_shutdown,
+            "app_name": self.config.app_name,
             "alive": self.config.alive,
+            "wait_shutdown": self.config.wait_shutdown,
             "current_time": datetime.now().isoformat()
         }
 
-        return Response(content=response, media_type='application/json')
+        return JSONResponse(content=response)
 
     async def restart(self):
         self.config.wait_shutdown = True
@@ -76,7 +76,7 @@ class Routers(object):
                 event = EventDestroy.model_validate(event)
                 success = await self.manager.start_event_destroy(event)
             else:
-                return Response(content=json.dumps({"msg": "Event not found"}), status_code=404)
+                return JSONResponse(content={"msg": "Event not found"}, status_code=404)
 
             if success:
                 return JSONResponse(content=response)

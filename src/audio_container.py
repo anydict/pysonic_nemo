@@ -1,9 +1,7 @@
 import asyncio
-import functools
 import json
 import os
 import wave
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from os import makedirs
 from pathlib import Path
@@ -35,8 +33,7 @@ class AudioContainer(object):
                  chan_id: str,
                  call_id: str,
                  event_create,
-                 callpy_client: CallPyClient,
-                 tpe: ThreadPoolExecutor
+                 callpy_client: CallPyClient
                  ):
         self.config: Config = config
         self.em_host: str = em_host
@@ -44,7 +41,6 @@ class AudioContainer(object):
         self.call_id: str = call_id
         self.chan_id: str = chan_id
         self.callpy_client: CallPyClient = callpy_client
-        self.tpe: ThreadPoolExecutor = tpe
 
         self.em_ssrc: int = CODE_AWAIT
 
@@ -369,12 +365,10 @@ class AudioContainer(object):
 
             if self.event_create.info.save_record == 1:
                 file_path = self.get_path_for_save_file(self.chan_id, self.event_create.info.save_format)
-                args = functools.partial(self.save_wav_file,
-                                         file_path=file_path,
-                                         bytes_samples=self.bytes_samples,
-                                         sample_width=self.get_sample_width(),
-                                         sample_rate=self.get_sample_rate())
-                asyncio.get_event_loop().run_in_executor(self.tpe, args)
+                self.save_wav_file(file_path=file_path,
+                                   bytes_samples=self.bytes_samples,
+                                   sample_width=self.get_sample_width(),
+                                   sample_rate=self.get_sample_rate())
                 self.log.info(f"running save file: {file_path}")
 
         except Exception as exc:

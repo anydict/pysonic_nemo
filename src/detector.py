@@ -1,9 +1,8 @@
 import asyncio
-import functools
 import os
 import time
 from asyncio import AbstractEventLoop
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future
+from concurrent.futures import ProcessPoolExecutor, Future
 from datetime import datetime
 
 import soundfile
@@ -20,13 +19,11 @@ class Detector(object):
     def __init__(self,
                  config: Config,
                  audio_containers: dict[str, AudioContainer],
-                 ppe: ProcessPoolExecutor,
-                 tpe: ThreadPoolExecutor
+                 ppe: ProcessPoolExecutor
                  ):
         self.config = config
         self.audio_containers: dict[str, AudioContainer] = audio_containers
         self.ppe: ProcessPoolExecutor = ppe
-        self.tpe: ThreadPoolExecutor = tpe
 
         self.executor_tasks: list[Future] = []
         self.executor_times: list[float] = []
@@ -237,15 +234,13 @@ class Detector(object):
                              f'len offset_times: {len(offset_times)}, count_start_points: {count_start_points}')
 
             if real_search and self.config.save_png_match_detection:
-                args = functools.partial(ac_print.save_matching_print2png,
-                                         first_points=ac_print.first_points,
-                                         second_points=ac_print.second_points,
-                                         arr2d=ac_print.arr2d,
-                                         hashes=ac_tmp_hash_similar[template_name],
-                                         save_folder='fingerprint_record',
-                                         print_name=f"{ac_print.print_name}_{template_name}",
-                                         shift_line=shift)
-                self.event_loop.run_in_executor(self.tpe, args)
+                ac_print.save_matching_print2png(first_points=ac_print.first_points,
+                                                 second_points=ac_print.second_points,
+                                                 arr2d=ac_print.arr2d,
+                                                 hashes=ac_tmp_hash_similar[template_name],
+                                                 save_folder='fingerprint_record',
+                                                 print_name=f"{ac_print.print_name}_{template_name}",
+                                                 shift_line=shift)
 
             return template_name
 
@@ -254,5 +249,5 @@ class Detector(object):
 
 if __name__ == "__main__":
     cfg = Config()
-    detector = Detector(audio_containers=dict(), config=cfg, ppe=ProcessPoolExecutor(), tpe=ThreadPoolExecutor())
+    detector = Detector(audio_containers=dict(), config=cfg, ppe=ProcessPoolExecutor())
     asyncio.create_task(detector.start_detection())

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from multiprocessing import Queue, Event
 from queue import Empty
@@ -23,12 +23,10 @@ class Manager(object):
                  config: Config,
                  mp_queue: Queue,
                  ppe: ProcessPoolExecutor,
-                 tpe: ThreadPoolExecutor,
                  finish_event: Event):
         self.config: Config = config
         self.mp_queue = mp_queue
         self.ppe: ProcessPoolExecutor = ppe
-        self.tpe: ThreadPoolExecutor = tpe
         self.finish_event: Event = finish_event
 
         self.callpy_clients: dict[str, CallPyClient] = {}
@@ -82,8 +80,7 @@ class Manager(object):
 
         detector = Detector(config=self.config,
                             audio_containers=self.audio_containers,
-                            ppe=self.ppe,
-                            tpe=self.tpe)
+                            ppe=self.ppe)
         await detector.start_detection()
 
         asyncio.create_task(self.alive())
@@ -187,8 +184,7 @@ class Manager(object):
                                                               call_id=event.call_id,
                                                               chan_id=event.chan_id,
                                                               event_create=event,
-                                                              callpy_client=callpy_client,
-                                                              tpe=self.tpe)
+                                                              callpy_client=callpy_client)
 
         return True
 

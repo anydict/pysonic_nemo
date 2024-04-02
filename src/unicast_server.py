@@ -14,7 +14,7 @@ class UnicastServer(Process):
                  mp_queue: Queue,
                  finish_event: Event):
         Process.__init__(self)
-        self.app: str = config.app
+        self.app_name: str = config.app_name
         self.em_host: str = config.app_unicast_host
         self.em_port: int = config.app_unicast_port
         self.unicast_protocol: str = config.app_unicast_protocol

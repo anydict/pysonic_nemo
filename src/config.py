@@ -32,7 +32,7 @@ class Config(object):
     """Config for our app"""
 
     default = {
-        "app": "pysonic",
+        "app_name": "pysonic",
         "app_api_host": "127.0.0.1",
         "app_api_port": 7005,
         "alive": True,
@@ -68,7 +68,7 @@ class Config(object):
         self.wait_shutdown: bool = bool(self.new_config['wait_shutdown'])  # if true then waiting for finish all tasks
         self.console_log: bool = bool(self.new_config['console_log'])  # enable/disable log in console
 
-        self.app: str = str(self.new_config['app'])
+        self.app_name: str = str(self.new_config['app_name'])
         self.app_api_host: str = str(self.new_config['app_api_host'])
         self.app_api_port: int = int(self.new_config['app_api_port'])
         self.app_unicast_host: str = str(self.new_config['app_unicast_host'])
