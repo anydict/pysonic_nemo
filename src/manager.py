@@ -17,7 +17,7 @@ from src.http_clients.callpy_client import CallPyClient
 
 
 class Manager(object):
-    """He runs calls and send messages in rooms"""
+    """He allocates RTP packages into AudioContainers and runs Detector"""
 
     def __init__(self,
                  config: Config,
@@ -37,7 +37,6 @@ class Manager(object):
         self.em_address_wait_ssrc: dict[str, str] = {}  # {em_address: chan_id}
         self.audio_containers: dict[str, AudioContainer] = {}
         self.stress_peak: int = 0
-        self.alloc_times: list[float] = []
 
     def __del__(self):
         # DO NOT USE loguru here: https://github.com/Delgan/loguru/issues/712
@@ -153,13 +152,8 @@ class Manager(object):
             if lose_packages > 0:
                 self.log.warning(f"lose_packages: {lose_packages}")
 
-            self.alloc_times.append(time.monotonic() - t1)
-            if self.alloc_times[-1] > 1:
-                self.log.warning(f"Huge alloc_time: {self.alloc_times[-1]}")
-            elif len(self.alloc_times) > 400:
-                self.log.info(f"avg_alloc_time={self.alloc_times}/{len(self.alloc_times)} "
-                              f"max_alloc_time={max(self.alloc_times)}")
-                self.alloc_times.clear()
+            if time.monotonic() - t1 > 1:
+                self.log.warning(f"Huge alloc_time: {time.monotonic() - t1}")
 
         self.log.info('END WHILE MANAGER')
 

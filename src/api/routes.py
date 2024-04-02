@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 
 from fastapi import APIRouter, status
@@ -38,13 +37,13 @@ class Routers(object):
     async def restart(self):
         self.config.wait_shutdown = True
 
-        json_str = json.dumps({
+        json_str = {
             "app": "callpy",
             "wait_shutdown": self.config.wait_shutdown,
             "alive": self.config.alive,
             "msg": "app restart started",
             "current_time": datetime.now().isoformat()
-        }, indent=4, default=str)
+        }
 
         return JSONResponse(content=json_str)
 

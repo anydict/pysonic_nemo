@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 import soundfile as sf
 
@@ -19,13 +19,11 @@ async def main():
     os.makedirs(folder_records, exist_ok=True)
     file_list = [file for file in os.listdir(folder_records) if file.endswith('.wav')]
 
-    tpe = ThreadPoolExecutor()
     ppe = ProcessPoolExecutor()
 
     detector = Detector(config=config,
                         audio_containers=dict(),
-                        ppe=ppe,
-                        tpe=tpe)
+                        ppe=ppe)
     await detector.start_detection()
     await asyncio.sleep(3)
 

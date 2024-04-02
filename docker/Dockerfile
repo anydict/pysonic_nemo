@@ -13,4 +13,4 @@ RUN git clone https://github.com/anydict/pysonic_nemo.git /opt/pysonic_nemo
 # Установка зависимостей и запуск приложения
 
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
-CMD ["python", "main.py"]
+CMD ["python", "run_pysonic_nemo.py"]

@@ -31,7 +31,6 @@ class Detector(object):
         self.templates: dict[str, Template] = {}
         self.all_templates_hash: dict[str, list[str]] = {}
         self.chan_id_with_amps: dict[str, list[int]] = {}
-        self.result = {}
         self.event_loop: AbstractEventLoop = asyncio.get_running_loop()
         self.log = logger.bind(object_id=self.__class__.__name__)
         self.log.info(f'init Detection')
