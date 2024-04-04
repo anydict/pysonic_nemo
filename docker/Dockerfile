@@ -1,16 +1,16 @@
-FROM python:3.11-slim-buster
+FROM python:3.12.2-slim
 
-# Установка git
-RUN apt-get update && apt-get install -y --no-install-recommends git
+ENV LD_LIBRARY_PATH=/usr/local/lib
+COPY --from=jrottenberg/ffmpeg /usr/local /usr/local/
 
 EXPOSE 7005
 EXPOSE 1234
 
-RUN mkdir -p /opt/pysonic_nemo
 WORKDIR /opt/pysonic_nemo
-RUN git clone https://github.com/anydict/pysonic_nemo.git /opt/pysonic_nemo
 
-# Установка зависимостей и запуск приложения
-
+COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+
+COPY ./ .
+
 CMD ["python", "run_pysonic_nemo.py"]

@@ -8,5 +8,6 @@
   "app_unicast_protocol": "udp",
   "app_unicast_buffer_size": 1024,
   "first_noise_answer_threshold": 250,
-  "save_png_match_detection": true
+  "save_png_match_detection": true,
+  "template_folder_path": "/opt/pysonic_nemo/template"
 }

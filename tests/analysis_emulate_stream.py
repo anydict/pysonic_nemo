@@ -2,10 +2,10 @@ import asyncio
 import os
 import random
 import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
-from loguru import logger
 import soundfile as sf
+from loguru import logger
 
 from src.audio_container import AudioContainer
 from src.config import Config
@@ -15,6 +15,7 @@ from src.detector import Detector
 
 async def main():
     config = Config()
+    config.template_folder_path = 'templates/enable'
 
     audio_containers: dict[str, AudioContainer] = {}
     folder_records = 'file_for_analysis'
@@ -39,7 +40,6 @@ async def main():
     #         tmp[seq_num] = template.samples[seq_num]
     #
     # template.save_samples2wav(samples=tmp, path='test.wav')
-    tpe = ThreadPoolExecutor()
     ppe = ProcessPoolExecutor()
     audio_container = AudioContainer(config=config,
                                      em_host=file_name,
@@ -48,7 +48,7 @@ async def main():
                                      chan_id='X123',
                                      event_create=None,  # noqa
                                      callpy_client=None,  # noqa
-                                     tpe=tpe)
+                                     )
 
     logger.info(len(template.amplitudes))
     logger.info(template.count_samples)
@@ -62,8 +62,7 @@ async def main():
 
     detector = Detector(config=config,
                         audio_containers=audio_containers,
-                        ppe=ppe,
-                        tpe=tpe)
+                        ppe=ppe)
     await detector.start_detection()
 
     await asyncio.sleep(3)

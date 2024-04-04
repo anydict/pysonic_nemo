@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 
+from src.config import DEFAULT_SAMPLE_SIZE, DEFAULT_SAMPLE_RATE
 from src.fingerprint_mining import get_fingerprint
 
 
@@ -13,8 +14,8 @@ class Template(object):
                  trim_first_low_amplitudes: bool = True,
                  add_first_silence_sample: bool = False,
                  limit_samples: Optional[int] = None,
-                 sample_size: int = 160,
-                 sample_rate: int = 8000):
+                 sample_size: int = DEFAULT_SAMPLE_SIZE,
+                 sample_rate: int = DEFAULT_SAMPLE_RATE):
         self.template_id: int = template_id
         self.template_name: str = template_name
         self.sample_size = sample_size
@@ -28,12 +29,13 @@ class Template(object):
 
         while trim_first_low_amplitudes:
             amp = amplitudes.pop(0)
-            if amp > 350 or len(amplitudes) == 0:
+            if abs(amp) > 5 or len(amplitudes) == 0:
                 amplitudes.insert(0, amp)
+                amplitudes.insert(0, 0)
                 break
 
         if add_first_silence_sample:
-            for _ in range(0, 160):
+            for _ in range(0, sample_size):
                 amplitudes.insert(0, 0)
 
         self.count_samples: int = len(amplitudes) // sample_size

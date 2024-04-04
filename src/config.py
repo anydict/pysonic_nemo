@@ -2,26 +2,26 @@ import json
 import os
 import platform
 
+DEFAULT_SAMPLE_RATE = 8000  # 8k kHz
+DEFAULT_SAMPLE_WIDTH = 2  # for 16 bit this equal 2
+DEFAULT_SAMPLE_SIZE = 160  # for 8 kHz this 160, for 16 kHz this 320
+DEFAULT_PAYLOAD_LENGTH = 320  # for 8 kHz this 320, for 16 kHz this 640 (sample_size*sample_width)
 SEQ_NUMBER_AFTER_FIRST_RESET = 65535
-AMPLITUDE_THRESHOLD_BEEP = 9200
+MIN_AMPLITUDE_FOR_DETECTION = 2500
+
+AMPLITUDE_THRESHOLD_BEEP = 5000
 AMPLITUDE_THRESHOLD_VOICE = 250
 AMPLITUDE_THRESHOLD_NOISE = 100
-MIN_AMPLITUDE_FOR_DETECTION = 2000
-
-DEFAULT_SAMPLE_WIDTH = 2  # for 16 bit this equal 2
-DEFAULT_SAMPLE_RATE = 8000  # 8k kHz
 
 CONNECTIVITY_MASK = 1
-DEFAULT_FS = 8000
-DEFAULT_WINDOW_SIZE = 512  # 4096
-DEFAULT_OVERLAP_RATIO = 0.5
+DEFAULT_WINDOW_SIZE = 1050  # 4096
+DEFAULT_OVERLAP_RATIO = 0.46
 DEFAULT_FAN_VALUE = 15  # 15 was the original value.
-DEFAULT_AMP_MIN = 20
-PEAK_NEIGHBORHOOD_SIZE = 8  # 20 was the original value.
+DEFAULT_AMP_MIN = 25
+PEAK_NEIGHBORHOOD_SIZE = 6  # 20 was the original value.
 MIN_HASH_TIME_DELTA = 0
 MAX_HASH_TIME_DELTA = 200
 PEAK_SORT = True
-TOPN = 2
 
 
 def filter_error_log(record):
@@ -42,7 +42,8 @@ class Config(object):
         "app_unicast_port": 1234,
         "app_unicast_protocol": "udp",
         "app_unicast_buffer_size": 1024,
-        "save_png_match_detection": True
+        "save_png_match_detection": True,
+        "template_folder_path": "/opt/pysonic_nemo/template"
     }
 
     def __init__(self, config_path: str = ''):
@@ -76,6 +77,8 @@ class Config(object):
         self.app_unicast_protocol: str = str(self.new_config['app_unicast_protocol'])
         self.app_unicast_buffer_size: int = int(self.new_config['app_unicast_buffer_size'])
         self.save_png_match_detection: int = int(self.new_config['save_png_match_detection'])
+
+        self.template_folder_path: str = str(self.new_config['template_folder_path'])
 
     def get_different_type_variables(self) -> list:
         different: list[str] = []

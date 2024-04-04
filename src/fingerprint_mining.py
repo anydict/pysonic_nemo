@@ -9,14 +9,22 @@ from scipy.ndimage import (binary_erosion,
                            iterate_structure)
 from scipy.ndimage import maximum_filter
 
-from src.config import DEFAULT_FS, DEFAULT_WINDOW_SIZE, DEFAULT_OVERLAP_RATIO, DEFAULT_FAN_VALUE, DEFAULT_AMP_MIN, \
-    CONNECTIVITY_MASK, PEAK_NEIGHBORHOOD_SIZE, PEAK_SORT, MIN_HASH_TIME_DELTA, MAX_HASH_TIME_DELTA
+from src.config import (DEFAULT_SAMPLE_RATE,
+                        DEFAULT_WINDOW_SIZE,
+                        DEFAULT_OVERLAP_RATIO,
+                        DEFAULT_FAN_VALUE,
+                        DEFAULT_AMP_MIN,
+                        CONNECTIVITY_MASK,
+                        PEAK_NEIGHBORHOOD_SIZE,
+                        PEAK_SORT,
+                        MIN_HASH_TIME_DELTA,
+                        MAX_HASH_TIME_DELTA)
 from src.custom_dataclasses.fingerprint import FingerPrint
 
 
 def get_fingerprint(print_name: str,
                     amplitudes: list[int],
-                    fs: int = DEFAULT_FS,
+                    fs: int = DEFAULT_SAMPLE_RATE,
                     wsize: int = DEFAULT_WINDOW_SIZE,
                     wratio: float = DEFAULT_OVERLAP_RATIO,
                     fan_value: int = DEFAULT_FAN_VALUE,

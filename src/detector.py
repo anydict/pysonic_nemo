@@ -9,7 +9,7 @@ import soundfile
 from loguru import logger
 
 from src.audio_container import AudioContainer
-from src.config import Config, MIN_AMPLITUDE_FOR_DETECTION
+from src.config import Config, MIN_AMPLITUDE_FOR_DETECTION, DEFAULT_SAMPLE_RATE
 from src.custom_dataclasses.fingerprint import FingerPrint
 from src.custom_dataclasses.template import Template
 from src.fingerprint_mining import get_fingerprint
@@ -43,7 +43,7 @@ class Detector(object):
 
     def load_templates(self):
         self.log.info('start load_templates')
-        folder = '/home/anydict/PycharmProjects/pysonic_nemo/tests/templates/enable'
+        folder = self.config.template_folder_path
         file_list = [file for file in os.listdir(folder) if file.endswith('.wav')]
 
         for template_id, file_name in enumerate(file_list):
@@ -51,6 +51,17 @@ class Detector(object):
             template_name = file_name.replace('.wav', '')
 
             audio_data, samplerate = soundfile.read(file_path, dtype='int16')
+
+            if samplerate != DEFAULT_SAMPLE_RATE:
+                self.log.warning(f'incorrect sample_rate in file_name={file_name} / {samplerate}, SKIP!')
+                continue
+            elif hasattr(audio_data[0], "size") is False:
+                self.log.warning(f'invalid audio_data in file_name={file_name}, SKIP!')
+                continue
+            elif hasattr(audio_data[0], "size") and audio_data[0].size == 2:
+                self.log.warning(f'found stereo in file_name={file_name}, SKIP!')
+                continue
+
             self.templates[template_name] = Template(template_id=template_id,
                                                      template_name=template_name,
                                                      amplitudes=list(audio_data))
@@ -195,7 +206,6 @@ class Detector(object):
                             ac_print: FingerPrint,
                             skip_template_name: str = '',
                             real_search: bool = True) -> str | None:
-
         ac_tmp_hash_similar: dict[str, list[str]] = {}
         for ac_hash in ac_print.hashes_offsets.keys():
             if ac_hash in self.all_templates_hash.keys():
@@ -207,6 +217,7 @@ class Detector(object):
 
         for template_name in ac_tmp_hash_similar.keys():
             count_start_points = len(ac_tmp_hash_similar[template_name])
+
             if count_start_points < 11:
                 continue
             elif template_name == skip_template_name:
@@ -220,7 +231,7 @@ class Detector(object):
 
             offset_times = sorted(set(timely_hashes.values()))
 
-            if len(timely_hashes) > 22 and len(offset_times) > 1:
+            if len(timely_hashes) > 22 and len(offset_times) == 2 or len(timely_hashes) > 11 and len(offset_times) > 2:
                 if real_search:
                     self.log.warning(f'found many points: {len(timely_hashes)}, offset_times: {offset_times}')
             elif len(offset_times) < 4:

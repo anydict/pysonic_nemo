@@ -7,14 +7,14 @@ from starlette import status
 from starlette.responses import JSONResponse
 
 accumulate_requests: list = []
-last_logs_api_date: datetime = datetime.now()
-last_huge_alarm_date: datetime = datetime.now()
+last_logs_api_time: datetime = datetime.now()
+last_huge_alarm_time: datetime = datetime.now()
 
 
 async def add_process_time_header(request: Request, call_next):
     global accumulate_requests
-    global last_huge_alarm_date
-    global last_logs_api_date
+    global last_huge_alarm_time
+    global last_logs_api_time
 
     start_time = datetime.now()
     response = await call_next(request)
@@ -23,29 +23,29 @@ async def add_process_time_header(request: Request, call_next):
         duration_warning = int(request.headers.get('x-duration-warning'))
 
     process_time = (datetime.now() - start_time).total_seconds()
+    response.headers['X-Current-Time'] = datetime.now().isoformat()
+    response.headers['X-Process-Time'] = str(process_time)
+    response.headers['Cache-Control'] = 'no-cache, no-store'
+
     request_info = {
         "method": request.method,
         "url": request.url,
         "headers": request.headers,
         "client": request.client,
-        "process_time": process_time,
         "response_code": response.status_code,
         "response_headers": response.headers
     }
 
-    if process_time > duration_warning and (datetime.now() - last_huge_alarm_date).total_seconds() > 1:
-        last_huge_alarm_date = datetime.now()
+    if process_time > duration_warning and (datetime.now() - last_huge_alarm_time).total_seconds() > 1:
+        last_huge_alarm_time = datetime.now()
         logger.warning(f'Huge process time in request: {request_info}')
 
     accumulate_requests.append(request_info)
-    if len(request_info) > 500 or (datetime.now() - last_logs_api_date).total_seconds() > 3:
-        last_logs_api_date = datetime.now()
+    if len(request_info) > 500 or (datetime.now() - last_logs_api_time).total_seconds() > 3:
+        last_logs_api_time = datetime.now()
         logger.info(accumulate_requests)
         accumulate_requests.clear()
 
-    response.headers['X-Current-Time'] = datetime.now().isoformat()
-    response.headers['X-Process-Time'] = str(process_time)
-    response.headers['Cache-Control'] = 'no-cache, no-store'
     return response
 
 

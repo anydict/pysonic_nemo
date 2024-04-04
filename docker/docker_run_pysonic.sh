@@ -23,20 +23,19 @@ else
   echo "No found docker in /usr/bin/docker or /run/host/bin/docker" && exit 0
 fi
 
+# ${docker_path} pull anydict/pysonic:"$version" || exit
 ${docker_path} stop "$instance_name"
 ${docker_path} rm "$instance_name"
 
-host_conf_path="/usr/local/etc/$instance_name" && mkdir -p $host_conf_path
-host_logs_path="/opt/$instance_name" && mkdir -p $host_logs_path
-host_sounds_path="/var/lib/asterisk/sounds/en/custom" && mkdir -p $host_sounds_path
+host_conf_path="/usr/local/etc/$instance_name" && mkdir -p "$host_conf_path"
+host_logs_path="/opt/$instance_name/logs" && mkdir -p "$host_logs_path"
 
 ${docker_path} run \
   -d \
   --restart=always \
   --net=host \
-  -v "$host_logs_path":"$host_logs_path" \
-  -v "$host_conf_path":"$host_conf_path" \
-  -v "$host_sounds_path":"$host_sounds_path" \
+  -v "$host_conf_path":/opt/pysonic_nemo/config \
+  -v "$host_logs_path":/opt/pysonic_nemo/logs \
   -v /tmp/:/tmp/ \
   --name "$instance_name" \
   anydict/pysonic:"$version"
