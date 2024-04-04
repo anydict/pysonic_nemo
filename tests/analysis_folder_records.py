@@ -28,7 +28,7 @@ async def main():
                         audio_containers=dict(),
                         ppe=ppe)
     await detector.start_detection()
-    await asyncio.sleep(3)
+    await asyncio.sleep(2)
 
     results = {}
 
@@ -60,9 +60,6 @@ async def main():
 
     await asyncio.sleep(1)
     config.wait_shutdown = True
-
-    # for key in audio_containers:
-    #     print(audio_containers[key].result_detections)
 
 
 if __name__ == '__main__':
