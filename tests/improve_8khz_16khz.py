@@ -55,7 +55,7 @@ def convert_amplitudes2samples(amplitudes: list[int],
     return samples
 
 
-audio_data, samplerate = soundfile.read('i_8000.wav', dtype='int16')
+audio_data, samplerate = soundfile.read('file_for_improve/i_8000.wav', dtype='int16')
 
 print(samplerate)
 print(audio_data)
@@ -70,7 +70,7 @@ last_value = 0
 for s, amps in old_samples.items():
     new_amps = []
     for a in amps:
-        new_amp = (last_value + round(a)) // 2
+        new_amp = round((last_value + round(a)) / 2)
         new_amps.append(new_amp)
         new_amps.append(a)
         last_value = a

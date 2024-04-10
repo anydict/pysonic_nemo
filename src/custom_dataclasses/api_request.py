@@ -17,7 +17,7 @@ class ApiRequest(object):
 
     def __post_init__(self):
         self.headers['x-api-id'] = self.api_id
-        self.headers['x-duration-warning'] = self.duration_warning
+        self.headers['x-duration-warning'] = str(self.duration_warning)
 
     def __str__(self):
         dict_object = self.__dict__

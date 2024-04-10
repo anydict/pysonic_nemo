@@ -20,7 +20,7 @@ async def main():
     use_map = False
     executor = ProcessPoolExecutor(max_workers=8)
 
-    for rec in range(0, 33):
+    for rec in range(0, 100):
         if use_process and use_map:
             start_time = time.time()
             for result in executor.map(get_fingerprint, record_names, record_amps):

@@ -76,7 +76,9 @@ class Detector(object):
                                                       skip_template_name=self.templates[template_name].template_name,
                                                       real_search=False)
             if found_template:
-                self.log.warning(f"Found cross template: {template_name} and {found_template}")
+                self.log.warning(f"Found cross template: {template_name} >> {found_template} "
+                                 f"hash_count_1={len(self.templates[template_name].fingerprint.hashes_offsets)} "
+                                 f"hash_count_2={len(self.templates[found_template].fingerprint.hashes_offsets)} ")
 
                 # a_file_path = os.path.join(folder, f'{template_name}.wav')
                 # b_file_path = os.path.join(folder, f'{found_template}.wav')
@@ -86,9 +88,7 @@ class Detector(object):
                 # else:
                 #     if os.path.isfile(b_file_path):
                 #         os.remove(a_file_path)
-        self.log.info(f"end load_templates, "
-                      f"count hashes: {len(self.all_templates_hash)}, "
-                      f"count templates: {len(self.templates)}")
+        self.log.info(f"end load_templates, hashes: {len(self.all_templates_hash)}, templates: {len(self.templates)}")
 
     async def start_loop(self):
         self.log.info("start loop for prepare amplitudes and detection")

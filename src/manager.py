@@ -222,7 +222,7 @@ class Manager(object):
         return False
 
     async def start_event_destroy(self, event: http_models.EventDestroy) -> bool:
-        self.log.info(f'event_name={event.event_name} and call_id={event.call_id}')
+        self.log.info(f'event_name={event.event_name} and call_id={event.call_id} chan_id={event.chan_id}')
 
         for _ in range(0, 5):
             if event.chan_id in self.audio_containers:

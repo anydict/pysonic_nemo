@@ -2,10 +2,8 @@ from operator import itemgetter
 from typing import List, Tuple
 
 import matplotlib.mlab as mlab
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import (binary_erosion,
-                           generate_binary_structure,
+from scipy.ndimage import (generate_binary_structure,
                            iterate_structure)
 from scipy.ndimage import maximum_filter
 
@@ -66,13 +64,19 @@ def get_fingerprint(print_name: str,
         print(f'ERROR! [get_fingerprint] Exception detail: {e}')
 
 
-def get_2d_peaks(arr2d: np.array, plot: bool = False, amp_min: int = DEFAULT_AMP_MIN) -> list[tuple[int, int]]:
+def get_2d_peaks(arr2d: np.array,
+                 plot: bool = False,
+                 amp_min: int = DEFAULT_AMP_MIN,
+                 connectivity_mask: int = CONNECTIVITY_MASK,
+                 peak_neighborhood_size: int = PEAK_NEIGHBORHOOD_SIZE) -> list[tuple[int, int]]:
     """
     Extract maximum peaks from the spectrogram matrix (arr2d).
 
     :param arr2d: matrix representing the spectrogram.
     :param plot: for plotting the results.
     :param amp_min: minimum amplitude in spectrogram in order to be considered a peak.
+    :param connectivity_mask: determines which elements of the output array belong to the structure
+    :param peak_neighborhood_size: number of dilation's performed on the structure with itself
     :return: a list composed by a list of frequencies and times.
     """
     try:
@@ -87,28 +91,22 @@ def get_2d_peaks(arr2d: np.array, plot: bool = False, amp_min: int = DEFAULT_AMP
         # I've made now the mask shape configurable in order to allow both ways of find maximum peaks.
         # That being said, we generate the mask by using the following function
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.generate_binary_structure.html
-        struct = generate_binary_structure(2, CONNECTIVITY_MASK)
+        struct = generate_binary_structure(2, connectivity_mask)
 
         #  And then we apply dilation using the following function
         #  http://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.iterate_structure.html
         #  Take into account that if PEAK_NEIGHBORHOOD_SIZE is 2 you can avoid the use of the scipy functions and just
         #  change it by the following code:
         #  neighborhood = np.ones((PEAK_NEIGHBORHOOD_SIZE * 2 + 1, PEAK_NEIGHBORHOOD_SIZE * 2 + 1), dtype=bool)
-        neighborhood = iterate_structure(struct, PEAK_NEIGHBORHOOD_SIZE)
+        neighborhood = iterate_structure(struct, peak_neighborhood_size)
 
         # find local maxima using our filter mask
         local_max = maximum_filter(arr2d, footprint=neighborhood) == arr2d
 
-        # Applying erosion, the dejavu documentation does not talk about this step.
-        background = (arr2d == 0)
-        eroded_background = binary_erosion(background, structure=neighborhood, border_value=1)
-
-        # Boolean mask of arr2d with True at peaks (applying XOR on both matrices).
-        detected_peaks = local_max != eroded_background
-
         # extract peaks
-        amps = arr2d[detected_peaks]
-        freqs, times = np.where(detected_peaks)
+        amps = arr2d[local_max]
+
+        freqs, times = np.where(local_max)
 
         # filter peaks
         amps = amps.flatten()
@@ -120,15 +118,9 @@ def get_2d_peaks(arr2d: np.array, plot: bool = False, amp_min: int = DEFAULT_AMP
         times_filter = times[filter_idxs]
 
         if plot:
+            import matplotlib.pyplot as plt
             # scatter of the peaks
             fig, ax = plt.subplots()
-            # ax.imshow(arr2d, interpolation='none', extent=[0, 25, 16, 0])
-            # ax.imshow(arr2d,
-            #           interpolation='none',
-            #           extent=[0, lx, ly, 0])
-            # ax.scatter(times_filter * DEFAULT_OVERLAP_RATIO / 16 * 100,
-            #            freqs_filter * (DEFAULT_WINDOW_SIZE * DEFAULT_OVERLAP_RATIO / DEFAULT_FS * 100))
-
             ax.imshow(maximum_filter(arr2d, footprint=neighborhood), interpolation='none')
             ax.scatter(times_filter, freqs_filter)
             ax.set_xlabel('Time')
@@ -180,7 +172,6 @@ def generate_hashes(skeleton: FingerPrint,
                         skeleton.add_hash_offset(hstr, t1)
                         skeleton.add_first_points(hstr, t1, freq1)
                         skeleton.add_second_points(hstr, t2, freq2)
-
         return skeleton
     except Exception as e:
         print(f'ERROR! [generate_hashes] Exception detail: {e}')
