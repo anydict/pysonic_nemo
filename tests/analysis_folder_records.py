@@ -53,7 +53,7 @@ async def main():
                 results[file_name] = found_template
                 print(f"in file={file_name} found template={found_template}")
 
-            if index % 10 == 0 and len(results) > 0:
+            if (index + 1) % 10 == 0 and len(results) > 0:
                 with open(f"result_{index}", 'w', encoding='utf-8') as jsonf:
                     jsonf.write(json.dumps(results, indent=4))
                     results = {}

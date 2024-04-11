@@ -21,12 +21,6 @@ class Template(object):
         self.sample_size = sample_size
         self.sample_rate = sample_rate
 
-        while True:
-            amp = amplitudes.pop(0)
-            if amp > 0 or len(amplitudes) == 0:
-                amplitudes.insert(0, amp)
-                break
-
         while trim_first_low_amplitudes:
             amp = amplitudes.pop(0)
             if abs(amp) > 5 or len(amplitudes) == 0:

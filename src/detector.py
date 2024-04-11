@@ -64,10 +64,13 @@ class Detector(object):
 
             self.templates[template_name] = Template(template_id=template_id,
                                                      template_name=template_name,
+                                                     limit_samples=0,
                                                      amplitudes=list(audio_data))
             for tmp_hash in self.templates[template_name].fingerprint.hashes_offsets.keys():
                 if self.all_templates_hash.get(tmp_hash) is None:
                     self.all_templates_hash[tmp_hash] = [template_name]
+                elif template_name in self.all_templates_hash[tmp_hash]:
+                    continue
                 else:
                     self.all_templates_hash[tmp_hash].append(template_name)
 
