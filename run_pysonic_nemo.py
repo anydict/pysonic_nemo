@@ -117,7 +117,7 @@ if __name__ == "__main__":
                     port=config.app_api_port,
                     log_level="info",
                     log_config=uvicorn_log_config,
-                    timeout_keep_alive=60,
+                    timeout_keep_alive=config.timeout_keep_alive,
                     reload=False)
 
         logger.info(f"Shutting down")

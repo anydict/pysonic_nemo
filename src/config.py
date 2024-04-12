@@ -35,6 +35,7 @@ class Config(object):
         "app_name": "pysonic",
         "app_api_host": "127.0.0.1",
         "app_api_port": 7005,
+        "timeout_keep_alive": 60,
         "alive": True,
         "wait_shutdown": False,
         "console_log": True,
@@ -72,6 +73,7 @@ class Config(object):
         self.app_name: str = str(self.new_config['app_name'])
         self.app_api_host: str = str(self.new_config['app_api_host'])
         self.app_api_port: int = int(self.new_config['app_api_port'])
+        self.timeout_keep_alive: int = int(self.new_config['timeout_keep_alive'])
         self.app_unicast_host: str = str(self.new_config['app_unicast_host'])
         self.app_unicast_port: int = int(self.new_config['app_unicast_port'])
         self.app_unicast_protocol: str = str(self.new_config['app_unicast_protocol'])
