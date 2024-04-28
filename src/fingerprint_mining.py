@@ -40,8 +40,7 @@ def get_fingerprint(print_name: str,
     :return: a list of hashes with their corresponding offsets.
     """
     try:
-        if len(amplitudes) < wsize * 2:
-            amplitudes.extend([0] * wsize * 2)
+        amplitudes = [0] * wsize * 2 + amplitudes + [0] * wsize * 2
 
         # FFT the signal and extract frequency components
         pxx, freqs, bins = mlab.specgram(

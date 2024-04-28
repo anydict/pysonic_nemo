@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -11,14 +12,14 @@ async def main():
     record_amps: list[list[int]] = []
     for num in range(0, 400):
         record_name = str(random.randint(0, 10000))
-        amps = [random.randint(-32000, 32000) for _ in range(0, 8000)]
+        amps = [random.randint(-32000, 32000) for _ in range(0, 8000 * 3)]
         record_names.append(record_name)
         record_amps.append(amps)
     results = []
     times = []
     use_process = True
     use_map = False
-    executor = ProcessPoolExecutor(max_workers=8)
+    executor = ProcessPoolExecutor(max_workers=os.cpu_count())
 
     for rec in range(0, 100):
         if use_process and use_map:

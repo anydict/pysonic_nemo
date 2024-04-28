@@ -243,17 +243,18 @@ class Detector(object):
                                      f"template_name:{template_name}")
                 continue
 
-            self.log.success(f'len points:{len(timely_hashes)} template:{template_name} chan_id:{ac_print.print_name} '
-                             f'len offset_times: {len(offset_times)}, count_start_points: {count_start_points}')
-
-            if real_search and self.config.save_png_match_detection:
-                ac_print.save_matching_print2png(first_points=ac_print.first_points,
-                                                 second_points=ac_print.second_points,
-                                                 arr2d=ac_print.arr2d,
-                                                 hashes=ac_tmp_hash_similar[template_name],
-                                                 save_folder='fingerprint_record',
-                                                 print_name=f"{ac_print.print_name}_{template_name}",
-                                                 shift_line=shift)
+            if real_search:
+                self.log.success(f'len points:{len(timely_hashes)} template:{template_name} '
+                                 f'chan_id:{ac_print.print_name} len offset_times: {len(offset_times)}, '
+                                 f'count_start_points: {count_start_points}')
+                if self.config.save_png_match_detection:
+                    ac_print.save_matching_print2png(first_points=ac_print.first_points,
+                                                     second_points=ac_print.second_points,
+                                                     arr2d=ac_print.arr2d,
+                                                     hashes=ac_tmp_hash_similar[template_name],
+                                                     save_folder='fingerprint_record',
+                                                     print_name=f"{ac_print.print_name}_{template_name}",
+                                                     shift_line=shift)
 
             return template_name
 
