@@ -9,7 +9,7 @@ import soundfile
 from loguru import logger
 
 from src.audio_container import AudioContainer
-from src.config import Config, MIN_AMPLITUDE_FOR_DETECTION, DEFAULT_SAMPLE_RATE
+from src.config import Config, DEFAULT_SAMPLE_RATE
 from src.custom_dataclasses.fingerprint import FingerPrint
 from src.custom_dataclasses.template import Template
 from src.fingerprint_mining import get_fingerprint
@@ -75,11 +75,12 @@ class Detector(object):
                     self.all_templates_hash[tmp_hash].append(template_name)
 
         for template_name in self.templates.keys():
-            found_template = self.analise_fingerprint(ac_print=self.templates[template_name].fingerprint,
-                                                      skip_template_name=self.templates[template_name].template_name,
-                                                      real_search=False)
-            if found_template:
-                self.log.warning(f"Found cross template: {template_name} >> {found_template} "
+            detect_result = self.analise_fingerprint(ac_print=self.templates[template_name].fingerprint,
+                                                     skip_template_name=self.templates[template_name].template_name,
+                                                     real_search=False)
+            if detect_result:
+                found_template, match_count = detect_result
+                self.log.warning(f"Found cross template: {template_name} >> {detect_result} "
                                  f"hash_count_1={len(self.templates[template_name].fingerprint.hashes_offsets)} "
                                  f"hash_count_2={len(self.templates[found_template].fingerprint.hashes_offsets)} ")
 
@@ -98,13 +99,12 @@ class Detector(object):
         while self.config.wait_shutdown is False:
             await asyncio.sleep(0.1)
             await self.run_prepare_amplitude()
-            await asyncio.sleep(0.1)
             await self.add_amps_in_executor()
         self.log.info("end start_loop")
 
     async def run_prepare_amplitude(self):
         if len(self.audio_containers) == 0:
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
             return
 
         for chan_id in self.audio_containers.keys():
@@ -129,44 +129,20 @@ class Detector(object):
             for seq_num in last_seq_numbers:
                 ac_amps.extend(audio_container.analyzed_samples[seq_num])
 
-            if len(ac_amps) < 1024:
-                # very few amplitudes
-                continue
-            elif max(ac_amps) < MIN_AMPLITUDE_FOR_DETECTION:
-                # skip silence
-                continue
-            else:
-                audio_container.last_detect_seq_num = audio_container.seq_num_last_package
-                self.chan_id_with_amps[chan_id] = ac_amps
+            audio_container.last_detect_seq_num = audio_container.seq_num_last_package
+            self.chan_id_with_amps[chan_id] = ac_amps
 
         # self.log.info(f"len self.chan_id_with_amps={self.chan_id_with_amps}")
 
     async def add_amps_in_executor(self):
-        if len(self.audio_containers) == 0:
+        if len(self.chan_id_with_amps) == 0:
             return
-        elif len(self.chan_id_with_amps) == 0:
-            return
-
-        t1 = time.monotonic()
 
         self.log.info("BEFORE run_in_executor")
-        for chan_id, ac_amps in self.chan_id_with_amps.items():
+        for chan_id in self.chan_id_with_amps:
+            ac_amps = self.chan_id_with_amps.pop(chan_id)
             task = self.event_loop.run_in_executor(self.ppe, get_fingerprint, chan_id, ac_amps)
             self.executor_tasks.append(task)
-
-        t2 = time.monotonic()
-        self.executor_times.append(t2 - t1)
-
-        if t2 - t1 > 1:
-            self.log.warning(f"Huge time detection! {t2 - t1}")
-        elif len(self.executor_times) > 10:
-            self.log.info(f"executor_times={max(self.executor_times)} "
-                          f"avg_time={sum(self.executor_times) / len(self.executor_times)} "
-                          f"max_time={max(self.executor_times)}")
-            self.executor_times.clear()
-
-        self.chan_id_with_amps.clear()
-        await asyncio.sleep(0.1)
 
     async def run_detection(self):
         self.log.info('start run_detection')
@@ -177,18 +153,16 @@ class Detector(object):
 
             t1 = time.monotonic()
             for task in asyncio.as_completed(self.executor_tasks):
-
                 fingerprint: FingerPrint = await task
-
-                found_template = self.analise_fingerprint(fingerprint)
-                chan_id = fingerprint.print_name
-                audio_container = self.audio_containers.get(chan_id)
+                detect_result = self.analise_fingerprint(fingerprint)
+                audio_container = self.audio_containers.get(fingerprint.print_name)
                 if audio_container is None:
                     continue
 
                 audio_container.duration_check_detect += time.monotonic() - t1
 
-                if found_template is not None:
+                if detect_result is not None:
+                    found_template, match_count = detect_result
                     self.audio_containers[fingerprint.print_name].add_found_template(found_template)
 
             t2 = time.monotonic()
@@ -208,7 +182,7 @@ class Detector(object):
     def analise_fingerprint(self,
                             ac_print: FingerPrint,
                             skip_template_name: str = '',
-                            real_search: bool = True) -> str | None:
+                            real_search: bool = True) -> tuple[str, int] | None:
         ac_tmp_hash_similar: dict[str, list[str]] = {}
         for ac_hash in ac_print.hashes_offsets.keys():
             if ac_hash in self.all_templates_hash.keys():
@@ -257,7 +231,7 @@ class Detector(object):
                                                      print_name=f"{ac_print.print_name}_{template_name}",
                                                      shift_line=shift)
 
-            return template_name
+            return template_name, match_count
 
         return None
 

@@ -41,7 +41,7 @@ async def add_process_time_header(request: Request, call_next):
         logger.warning(f'Huge process time in request: {request_info}')
 
     accumulate_requests.append(request_info)
-    if len(request_info) > 500 or (datetime.now() - last_logs_api_time).total_seconds() > 3:
+    if (datetime.now() - last_logs_api_time).total_seconds() > 3:
         last_logs_api_time = datetime.now()
         logger.info(accumulate_requests)
         accumulate_requests.clear()
