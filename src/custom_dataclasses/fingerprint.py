@@ -23,13 +23,16 @@ class FingerPrint(object):
         self.second_points: dict[str, tuple[int, int]] = dict()
 
     def add_hash_offset(self, _hash: str, offset: int):
-        self.hashes_offsets[_hash] = offset
+        if _hash not in self.hashes_offsets:
+            self.hashes_offsets[_hash] = offset
 
     def add_first_points(self, _hash, x, y):
-        self.first_points[_hash] = (x, y)
+        if _hash not in self.first_points:
+            self.first_points[_hash] = (x, y)
 
     def add_second_points(self, _hash, x, y):
-        self.second_points[_hash] = (x, y)
+        if _hash not in self.second_points:
+            self.second_points[_hash] = (x, y)
 
     def save_print2png(self, print_name: str, print_folder: str = 'fingerprint_template'):
         if len(self.first_points) == 0:

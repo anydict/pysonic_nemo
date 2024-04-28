@@ -229,18 +229,19 @@ class Detector(object):
             template_hashes_offsets = self.templates[template_name].fingerprint.hashes_offsets
             timely_hashes, shift = ac_print.get_timely_hashes(source_hashes_offsets=ac_print.hashes_offsets,
                                                               correct_hashes_offsets=template_hashes_offsets)
-            if len(timely_hashes) < 10:
-                continue
 
             offset_times = sorted(set(timely_hashes.values()))
 
-            if len(timely_hashes) > 22 and len(offset_times) == 2 or len(timely_hashes) > 11 and len(offset_times) > 2:
-                if real_search:
-                    self.log.warning(f'found many points: {len(timely_hashes)}, offset_times: {offset_times}')
-            elif len(offset_times) < 4:
-                if real_search:
-                    self.log.warning(f"the offset is too small: {offset_times}, count points: {len(timely_hashes)} "
-                                     f"template_name:{template_name}")
+            len_timely_hashes, len_offset_times = len(timely_hashes), len(offset_times)
+
+            if len_timely_hashes < 5 or len_offset_times < 2:
+                continue
+
+            match_count = len_timely_hashes + len_offset_times * 15
+
+            if match_count < 80:
+                if match_count > 60:
+                    self.log.info(f'match_count={match_count} {ac_print.print_name} > {template_name}')
                 continue
 
             if real_search:
