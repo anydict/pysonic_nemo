@@ -47,7 +47,7 @@ async def main():
                                      call_id='X123',
                                      chan_id='X123',
                                      event_create=None,  # noqa
-                                     callpy_client=None,  # noqa
+                                     call_service_client=None,  # noqa
                                      )
 
     logger.info(len(template.amplitudes))

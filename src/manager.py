@@ -13,7 +13,7 @@ from src.audio_container import AudioContainer
 from src.config import Config
 from src.custom_dataclasses.package import Package
 from src.detector import Detector
-from src.http_clients.callpy_client import CallPyClient
+from src.http_clients.call_service_client import CallServiceClient
 
 
 class Manager(object):
@@ -29,7 +29,7 @@ class Manager(object):
         self.ppe: ProcessPoolExecutor = ppe
         self.finish_event: Event = finish_event
 
-        self.callpy_clients: dict[str, CallPyClient] = {}
+        self.call_service_clients: dict[str, CallServiceClient] = {}
         self.packages_queue: list[Package] = []
         self.log = logger.bind(object_id=self.__class__.__name__)
 
@@ -50,8 +50,8 @@ class Manager(object):
         self.finish_event.set()
         self.ppe.shutdown()
 
-        for callpy_client in self.callpy_clients.values():
-            await callpy_client.close_session()
+        for call_service_client in self.call_service_clients.values():
+            await call_service_client.close_session()
 
         for key in list(self.audio_containers.keys()):
             self.log.info(f'unbind {key}')
@@ -163,14 +163,14 @@ class Manager(object):
 
         callback_address = f'{event.info.callback_host}:{event.info.callback_port}'
 
-        if callback_address not in self.callpy_clients:
-            self.log.debug('start create callpy_client')
-            callpy_client = CallPyClient(event.info.callback_host, event.info.callback_port)
-            self.callpy_clients[callback_address] = callpy_client
+        if callback_address not in self.call_service_clients:
+            self.log.debug('start create call_service_client')
+            call_service_client = CallServiceClient(event.info.callback_host, event.info.callback_port)
+            self.call_service_clients[callback_address] = call_service_client
         else:
-            self.log.debug(f'callpy_client {callback_address} already exists')
+            self.log.debug(f'call_service_client {callback_address} already exists')
 
-        callpy_client = self.callpy_clients[callback_address]
+        call_service_client = self.call_service_clients[callback_address]
         self.em_address_wait_ssrc[em_address] = event.chan_id
         self.audio_containers[event.chan_id] = AudioContainer(config=self.config,
                                                               em_host=event.info.em_host,
@@ -178,7 +178,7 @@ class Manager(object):
                                                               call_id=event.call_id,
                                                               chan_id=event.chan_id,
                                                               event_create=event,
-                                                              callpy_client=callpy_client)
+                                                              call_service_client=call_service_client)
 
         return True
 

@@ -18,7 +18,7 @@ from src.config import (Config,
                         AMPLITUDE_THRESHOLD_NOISE,
                         AMPLITUDE_THRESHOLD_VOICE)
 from src.custom_dataclasses.package import Package
-from src.http_clients.callpy_client import CallPyClient
+from src.http_clients.call_service_client import CallServiceClient
 
 CODE_ERROR = -9
 CODE_AWAIT = -1
@@ -33,14 +33,14 @@ class AudioContainer(object):
                  chan_id: str,
                  call_id: str,
                  event_create,
-                 callpy_client: CallPyClient
+                 call_service_client: CallServiceClient
                  ):
         self.config: Config = config
         self.em_host: str = em_host
         self.em_port: int = em_port
         self.call_id: str = call_id
         self.chan_id: str = chan_id
-        self.callpy_client: CallPyClient = callpy_client
+        self.call_service_client: CallServiceClient = call_service_client
 
         self.em_ssrc: int = CODE_AWAIT
 

@@ -7,7 +7,7 @@ from src.custom_dataclasses.api_request import ApiRequest
 from src.http_clients.base_client import BaseClient
 
 
-class CallPyClient(BaseClient):
+class CallServiceClient(BaseClient):
     def __init__(self, host: str, port: int):
         super().__init__()
         self.host = host
