@@ -19,8 +19,7 @@ class Detector(object):
     def __init__(self,
                  config: Config,
                  audio_containers: dict[str, AudioContainer],
-                 ppe: ProcessPoolExecutor
-                 ):
+                 ppe: ProcessPoolExecutor):
         self.config = config
         self.audio_containers: dict[str, AudioContainer] = audio_containers
         self.ppe: ProcessPoolExecutor = ppe
@@ -139,7 +138,7 @@ class Detector(object):
             return
 
         self.log.info("BEFORE run_in_executor")
-        for chan_id in self.chan_id_with_amps:
+        for chan_id in list(self.chan_id_with_amps):
             ac_amps = self.chan_id_with_amps.pop(chan_id)
             task = self.event_loop.run_in_executor(self.ppe, get_fingerprint, chan_id, ac_amps)
             self.executor_tasks.append(task)
