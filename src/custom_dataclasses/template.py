@@ -1,7 +1,5 @@
 from typing import Optional
 
-import numpy as np
-
 from src.config import DEFAULT_SAMPLE_SIZE, DEFAULT_SAMPLE_RATE
 from src.fingerprint_mining import get_fingerprint
 
@@ -12,7 +10,6 @@ class Template(object):
                  template_name: str,
                  amplitudes: list[int],
                  trim_first_low_amplitudes: bool = True,
-                 add_first_silence_sample: bool = False,
                  limit_samples: Optional[int] = None,
                  sample_size: int = DEFAULT_SAMPLE_SIZE,
                  sample_rate: int = DEFAULT_SAMPLE_RATE):
@@ -27,10 +24,6 @@ class Template(object):
                 amplitudes.insert(0, amp)
                 amplitudes.insert(0, 0)
                 break
-
-        if add_first_silence_sample:
-            for _ in range(0, sample_size):
-                amplitudes.insert(0, 0)
 
         self.count_samples: int = len(amplitudes) // sample_size
         if limit_samples:
@@ -50,18 +43,6 @@ class Template(object):
         # self.fingerprint.save_print2png(print_name=self.template_name)
 
     @staticmethod
-    def trend_dict2trend_string(trend_samples: dict[int, int]) -> str:
-        return ''.join([str(a) for a in trend_samples.values()])
-
-    @staticmethod
-    def ger_zero_crossing(samples: dict[int, list]) -> dict[int, int]:
-        zero_crossings = {}
-        for seq_num in samples:
-            zero_crossing = np.where(np.diff(np.sign(samples[seq_num])))[0]
-            zero_crossings[seq_num] = len(zero_crossing)
-        return zero_crossings
-
-    @staticmethod
     def convert_amplitudes2samples(amplitudes: list[int],
                                    samples_size: int) -> dict[int, list]:
         samples: dict[int, list] = {}
@@ -69,30 +50,6 @@ class Template(object):
             samples[seq_num] = list(amplitudes[seq_num * samples_size: (seq_num + 1) * samples_size])
 
         return samples
-
-    @staticmethod
-    def convert_samples2trend(samples: dict[int, list]) -> dict[int, int]:
-        trend_samples: dict[int, int] = {}
-        for seq_num in sorted(samples.keys()):
-
-            if seq_num > min(samples):
-                curr = int(max(samples[seq_num]))
-                last1 = int(max(samples[seq_num - 1]))
-
-                if abs(curr) < 400:
-                    trend_samples[seq_num] = 0
-                elif curr >= last1 * 1.5:
-                    trend_samples[seq_num] = min(trend_samples[seq_num - 1] + 3, 9)
-                else:
-                    trend_samples[seq_num] = max(trend_samples[seq_num - 1] - 3, 1)
-
-            else:
-                if int(max(samples[seq_num])) < 400:
-                    trend_samples[seq_num] = 0
-                else:
-                    trend_samples[seq_num] = 5
-
-        return trend_samples
 
     @staticmethod
     def convert16khz_to_8khz(amplitudes: list[int]) -> list[int]:

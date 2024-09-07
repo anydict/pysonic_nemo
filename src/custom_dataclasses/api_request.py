@@ -18,9 +18,12 @@ class ApiRequest(object):
     def __post_init__(self):
         self.headers['x-api-id'] = self.api_id
         self.headers['x-duration-warning'] = str(self.duration_warning)
+        if self.attempts <= 0:
+            self.attempts = 1
 
     def __str__(self):
-        dict_object = self.__dict__
+        dict_object = self.__dict__.copy()
+
         if len(str(self.request)) > 1000:
             dict_object['request'] = f"len={len(str(self.request))}"
 

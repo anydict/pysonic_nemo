@@ -1,27 +1,30 @@
 import asyncio
 
-import aiohttp
-from loguru import logger
-
+from src.config import Config
 from src.custom_dataclasses.api_request import ApiRequest
 from src.http_clients.base_client import BaseClient
 
 
 class CallServiceClient(BaseClient):
-    def __init__(self, host: str, port: int):
-        super().__init__()
+    def __init__(self, config: Config, host: str, port: int):
+        super().__init__(log_object_id=f'{self.__class__.__name__}@{host}:{port}',
+                         headers={'x-app-client': config.app_name})
         self.host = host
         self.port = port
-        self.session = aiohttp.ClientSession()
-        self.log = logger.bind(object_id=f'{self.__class__.__name__}@{host}:{port}')
+        self.log.info(f'http_info: {self.dump().__str__()}')
         asyncio.create_task(self.check_diag())
 
     @property
-    def url_api(self):
+    def address(self):
+        """IP and colon and PORT"""
+        return f'{self.host}:{self.port}'
+
+    @property
+    def http_address(self):
         return f'http://{self.host}:{self.port}'
 
     async def check_diag(self):
-        url = f'{self.url_api}/diag'
+        url = f'{self.http_address}/diag'
         method = 'GET'
         debug_log = True
 

@@ -9,6 +9,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -80,7 +81,9 @@ if __name__ == "__main__":
         }
 
         app = FastAPI(exception_handlers=exception_handlers,
-                      version=config.app_version)
+                      default_response_class=ORJSONResponse,
+                      version=config.app_version,
+                      title=config.app_name)
 
         app.add_middleware(BaseHTTPMiddleware,  # noqa
                            dispatch=add_process_time_header)

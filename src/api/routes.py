@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import ORJSONResponse
 from loguru import logger
 from pydantic import ValidationError
 
@@ -25,19 +25,17 @@ class Routers(object):
         self.router.add_api_route("/events", self.events, methods=["POST"])
 
     async def get_diag(self):
-        response = {
+        return {
             "app_name": self.config.app_name,
             "alive": self.config.alive,
             "wait_shutdown": self.config.wait_shutdown,
             "current_time": datetime.now().isoformat()
         }
 
-        return JSONResponse(content=response)
-
     async def restart(self):
         self.config.wait_shutdown = True
 
-        json_str = {
+        return {
             "app": "callpy",
             "wait_shutdown": self.config.wait_shutdown,
             "alive": self.config.alive,
@@ -45,9 +43,7 @@ class Routers(object):
             "current_time": datetime.now().isoformat()
         }
 
-        return JSONResponse(content=json_str)
-
-    async def events(self, event: Event):
+    async def events(self, event: Event) -> ORJSONResponse:
         receive_time = datetime.now().isoformat()
 
         response = {
@@ -75,26 +71,26 @@ class Routers(object):
                 event = EventDestroy.model_validate(event)
                 success = await self.manager.start_event_destroy(event)
             else:
-                return JSONResponse(content={"msg": "Event not found"}, status_code=404)
+                return ORJSONResponse(content={"msg": "Event not found"}, status_code=404)
 
             if success:
-                return JSONResponse(content=response)
+                return ORJSONResponse(content=response)
             else:
-                return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,
-                                    content={"status": "error", "msg": f"Not found audio_packages"})
+                return ORJSONResponse(status_code=status.HTTP_404_NOT_FOUND,
+                                      content={"status": "error", "msg": f"Not found audio_packages"})
 
         except AttributeError as exc:
             logger.error(f"AttributeError in event={event.event_name}")
             logger.error(f"AttributeError detail: {exc}")
 
-            return JSONResponse(
+            return ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={"status": "error", "msg": "invalid request", "detail": str(exc)}
             )
         except ValidationError as exc:
             logger.error(f"ValidationError in event {event.event_name}: {exc}")
 
-            return JSONResponse(
+            return ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={"status": "error", "msg": str(exc)}
             )

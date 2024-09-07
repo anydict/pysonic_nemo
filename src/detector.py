@@ -1,5 +1,7 @@
 import asyncio
+import functools
 import os
+import random
 import time
 from asyncio import AbstractEventLoop
 from concurrent.futures import ProcessPoolExecutor, Future
@@ -12,7 +14,8 @@ from src.audio_container import AudioContainer
 from src.config import Config, DEFAULT_SAMPLE_RATE
 from src.custom_dataclasses.fingerprint import FingerPrint
 from src.custom_dataclasses.template import Template
-from src.fingerprint_mining import get_fingerprint
+from src.custom_functions.build_spectrum import get_spectrum_with_name
+from src.fingerprint_mining import get_fingerprint_with_spectrum
 
 
 class Detector(object):
@@ -77,7 +80,7 @@ class Detector(object):
             detect_result = self.analise_fingerprint(ac_print=self.templates[template_name].fingerprint,
                                                      skip_template_name=self.templates[template_name].template_name,
                                                      real_search=False)
-            if detect_result:
+            if detect_result and detect_result[1] > 6700:
                 found_template, match_count = detect_result
                 self.log.warning(f"Found cross template: {template_name} >> {detect_result} "
                                  f"hash_count_1={len(self.templates[template_name].fingerprint.hashes_offsets)} "
@@ -106,7 +109,10 @@ class Detector(object):
             await asyncio.sleep(0.5)
             return
 
-        for chan_id in self.audio_containers.keys():
+        chan_id_list = list(self.audio_containers.keys())
+        random.shuffle(chan_id_list)
+
+        for chan_id in chan_id_list:
             audio_container = self.audio_containers[chan_id]
             if audio_container is None:
                 continue
@@ -123,15 +129,12 @@ class Detector(object):
             elif audio_container.seq_num_last_package == audio_container.last_detect_seq_num:
                 continue
 
-            ac_amps = []
+            self.chan_id_with_amps[chan_id] = []
             last_seq_numbers = sorted(list(audio_container.analyzed_samples.keys()))[-150:]  # last three seconds
             for seq_num in last_seq_numbers:
-                ac_amps.extend(audio_container.analyzed_samples[seq_num])
+                self.chan_id_with_amps[chan_id].extend(audio_container.analyzed_samples[seq_num])
 
             audio_container.last_detect_seq_num = audio_container.seq_num_last_package
-            self.chan_id_with_amps[chan_id] = ac_amps
-
-        # self.log.info(f"len self.chan_id_with_amps={self.chan_id_with_amps}")
 
     async def add_amps_in_executor(self):
         if len(self.chan_id_with_amps) == 0:
@@ -140,8 +143,9 @@ class Detector(object):
         self.log.info("BEFORE run_in_executor")
         for chan_id in list(self.chan_id_with_amps):
             ac_amps = self.chan_id_with_amps.pop(chan_id)
-            task = self.event_loop.run_in_executor(self.ppe, get_fingerprint, chan_id, ac_amps)
-            self.executor_tasks.append(task)
+
+            args = functools.partial(get_spectrum_with_name, name=chan_id, amplitudes=ac_amps)
+            self.executor_tasks.append(self.event_loop.run_in_executor(self.ppe, args))
 
     async def run_detection(self):
         self.log.info('start run_detection')
@@ -152,7 +156,9 @@ class Detector(object):
 
             t1 = time.monotonic()
             for task in asyncio.as_completed(self.executor_tasks):
-                fingerprint: FingerPrint = await task
+                chan_id, spectrum = await task
+                fingerprint: FingerPrint = get_fingerprint_with_spectrum(print_name=chan_id, spectrum=spectrum)
+                await asyncio.sleep(0)
                 detect_result = self.analise_fingerprint(fingerprint)
                 audio_container = self.audio_containers.get(fingerprint.print_name)
                 if audio_container is None:

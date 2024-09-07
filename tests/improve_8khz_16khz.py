@@ -22,7 +22,7 @@ def convert_samples2dict_bytes(samples: dict[int, list]) -> dict:
 
 
 def save_samples2wav(samples: dict[int, list],
-                     path: str = 'test_i_2.wav'):
+                     path: str = 'test_8.wav'):
     """
     Save samples to wav file
 
@@ -55,7 +55,7 @@ def convert_amplitudes2samples(amplitudes: list[int],
     return samples
 
 
-audio_data, samplerate = soundfile.read('file_for_improve/i_8000.wav', dtype='int16')
+audio_data, samplerate = soundfile.read('test_4.wav', dtype='int16')
 
 print(samplerate)
 print(audio_data)

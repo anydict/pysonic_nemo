@@ -2,9 +2,9 @@ from datetime import datetime
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import ORJSONResponse
 from loguru import logger
 from starlette import status
-from starlette.responses import JSONResponse
 
 accumulate_requests: list = []
 last_logs_api_time: datetime = datetime.now()
@@ -69,7 +69,7 @@ async def custom_validation_exception_handler(request: Request,
     logger.error(f"ValidationError client_info: {request.client}")
     logger.error(request.headers)
 
-    return JSONResponse(
+    return ORJSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"status": "error", "msg": " ### ".join(errors)}
     )
@@ -82,4 +82,4 @@ async def custom_404_handler(request: Request, __):
         "status": "error",
         "msg": msg
     }
-    return JSONResponse(content=response, status_code=404)
+    return ORJSONResponse(content=response, status_code=404)

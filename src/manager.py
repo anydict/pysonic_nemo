@@ -165,7 +165,9 @@ class Manager(object):
 
         if callback_address not in self.call_service_clients:
             self.log.debug('start create call_service_client')
-            call_service_client = CallServiceClient(event.info.callback_host, event.info.callback_port)
+            call_service_client = CallServiceClient(config=self.config,
+                                                    host=event.info.callback_host,
+                                                    port=event.info.callback_port)
             self.call_service_clients[callback_address] = call_service_client
         else:
             self.log.debug(f'call_service_client {callback_address} already exists')

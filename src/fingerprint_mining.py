@@ -20,6 +20,12 @@ from src.config import (DEFAULT_SAMPLE_RATE,
 from src.custom_dataclasses.fingerprint import FingerPrint
 
 
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0)  # only difference
+
+
 def get_fingerprint(print_name: str,
                     amplitudes: list[int],
                     fs: int = DEFAULT_SAMPLE_RATE,
@@ -40,10 +46,10 @@ def get_fingerprint(print_name: str,
     :return: a list of hashes with their corresponding offsets.
     """
     try:
-        amplitudes = [0] * wsize * 2 + amplitudes + [0] * wsize * 2
+        amplitudes = [0] * wsize * 2 + amplitudes + [0] * wsize
 
         # FFT the signal and extract frequency components
-        pxx, freqs, bins = mlab.specgram(
+        spectrum, freqs, bins = mlab.specgram(
             amplitudes,
             NFFT=wsize,
             Fs=fs,
@@ -51,8 +57,33 @@ def get_fingerprint(print_name: str,
             noverlap=int(wsize * wratio)
         )
 
+        if isinstance(spectrum, np.ndarray) is False:
+            spectrum = np.zeros(1)
+
+        return get_fingerprint_with_spectrum(print_name=print_name,
+                                             spectrum=spectrum,
+                                             fan_value=fan_value,
+                                             amp_min=amp_min)
+    except Exception as e:
+        print(f'ERROR! [get_fingerprint] Exception detail: {e}')
+
+
+def get_fingerprint_with_spectrum(print_name: str,
+                                  spectrum: np.ndarray,
+                                  fan_value: int = DEFAULT_FAN_VALUE,
+                                  amp_min: int = DEFAULT_AMP_MIN) -> FingerPrint:
+    """
+    FFT the channel, log transform output, find local maxima, then return locally sensitive hashes.
+
+    :param print_name: fingerprint name
+    :param spectrum: the returned first param from mlab.specgram
+    :param fan_value: degree to which a fingerprint can be paired with its neighbors.
+    :param amp_min: minimum amplitude in spectrogram in order to be considered a peak.
+    :return: a list of hashes with their corresponding offsets.
+    """
+    try:
         # Apply log transform since specgram function returns linear array. 0s are excluded to avoid np warning.
-        arr2d = 10 * np.log10(pxx, out=np.zeros_like(pxx), where=(pxx != 0))
+        arr2d = 10 * np.log10(spectrum, out=np.zeros_like(spectrum), where=(spectrum != 0))
 
         local_maxima = get_2d_peaks(arr2d, plot=False, amp_min=amp_min)
 
