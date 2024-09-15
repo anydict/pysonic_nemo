@@ -32,7 +32,8 @@ def get_fingerprint(print_name: str,
                     wsize: int = DEFAULT_WINDOW_SIZE,
                     wratio: float = DEFAULT_OVERLAP_RATIO,
                     fan_value: int = DEFAULT_FAN_VALUE,
-                    amp_min: int = DEFAULT_AMP_MIN) -> FingerPrint:
+                    amp_min: int = DEFAULT_AMP_MIN,
+                    plot: bool = False) -> FingerPrint:
     """
     FFT the channel, log transform output, find local maxima, then return locally sensitive hashes.
 
@@ -43,6 +44,7 @@ def get_fingerprint(print_name: str,
     :param wratio: ratio by which each sequential window overlaps the last and the next window.
     :param fan_value: degree to which a fingerprint can be paired with its neighbors.
     :param amp_min: minimum amplitude in spectrogram in order to be considered a peak.
+    :param plot: show plot graphic
     :return: a list of hashes with their corresponding offsets.
     """
     try:
@@ -60,10 +62,23 @@ def get_fingerprint(print_name: str,
         if isinstance(spectrum, np.ndarray) is False:
             spectrum = np.zeros(1)
 
+        if plot:
+            # print(spectrum.shape)  # number_time_points: (len(amplitudes) - wsize)/ int(wsize*wratio)
+            import matplotlib.pyplot as plt
+            # scatter of the peaks
+            fig, ax = plt.subplots()
+            ax.imshow(spectrum, interpolation='none')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Frequency')
+            ax.set_title(f"Points {print_name}")
+            plt.gca().invert_yaxis()
+            plt.show()
+
         return get_fingerprint_with_spectrum(print_name=print_name,
                                              spectrum=spectrum,
                                              fan_value=fan_value,
-                                             amp_min=amp_min)
+                                             amp_min=amp_min,
+                                             plot=plot)
     except Exception as e:
         print(f'ERROR! [get_fingerprint] Exception detail: {e}')
 
@@ -71,7 +86,8 @@ def get_fingerprint(print_name: str,
 def get_fingerprint_with_spectrum(print_name: str,
                                   spectrum: np.ndarray,
                                   fan_value: int = DEFAULT_FAN_VALUE,
-                                  amp_min: int = DEFAULT_AMP_MIN) -> FingerPrint:
+                                  amp_min: int = DEFAULT_AMP_MIN,
+                                  plot: bool = False) -> FingerPrint:
     """
     FFT the channel, log transform output, find local maxima, then return locally sensitive hashes.
 
@@ -79,13 +95,14 @@ def get_fingerprint_with_spectrum(print_name: str,
     :param spectrum: the returned first param from mlab.specgram
     :param fan_value: degree to which a fingerprint can be paired with its neighbors.
     :param amp_min: minimum amplitude in spectrogram in order to be considered a peak.
+    :param plot: show plot graphic
     :return: a list of hashes with their corresponding offsets.
     """
     try:
         # Apply log transform since specgram function returns linear array. 0s are excluded to avoid np warning.
-        arr2d = 10 * np.log10(spectrum, out=np.zeros_like(spectrum), where=(spectrum != 0))
+        arr2d = 10 * np.log10(spectrum, out=np.zeros_like(spectrum), where=(spectrum > 1))
 
-        local_maxima = get_2d_peaks(arr2d, plot=False, amp_min=amp_min)
+        local_maxima = get_2d_peaks(arr2d, plot=plot, print_name=print_name, amp_min=amp_min)
 
         skeleton: FingerPrint = FingerPrint(print_name=print_name, arr2d=arr2d)
         fingerprint: FingerPrint = generate_hashes(skeleton, local_maxima, fan_value=fan_value)
@@ -96,6 +113,7 @@ def get_fingerprint_with_spectrum(print_name: str,
 
 def get_2d_peaks(arr2d: np.array,
                  plot: bool = False,
+                 print_name: str = '',
                  amp_min: int = DEFAULT_AMP_MIN,
                  connectivity_mask: int = CONNECTIVITY_MASK,
                  peak_neighborhood_size: int = PEAK_NEIGHBORHOOD_SIZE) -> list[tuple[int, int]]:
@@ -104,6 +122,7 @@ def get_2d_peaks(arr2d: np.array,
 
     :param arr2d: matrix representing the spectrogram.
     :param plot: for plotting the results.
+    :param print_name: fingerprint name for splot graphic
     :param amp_min: minimum amplitude in spectrogram in order to be considered a peak.
     :param connectivity_mask: determines which elements of the output array belong to the structure
     :param peak_neighborhood_size: number of dilation's performed on the structure with itself
@@ -146,6 +165,7 @@ def get_2d_peaks(arr2d: np.array,
 
         freqs_filter = freqs[filter_idxs]
         times_filter = times[filter_idxs]
+        amps_filter = amps[filter_idxs]
 
         if plot:
             import matplotlib.pyplot as plt
@@ -155,11 +175,11 @@ def get_2d_peaks(arr2d: np.array,
             ax.scatter(times_filter, freqs_filter)
             ax.set_xlabel('Time')
             ax.set_ylabel('Frequency')
-            ax.set_title("Spectrogram")
+            ax.set_title(f"Spectrogram {print_name}")
             plt.gca().invert_yaxis()
             plt.show()
 
-        return list(zip(freqs_filter, times_filter))
+        return list(zip(freqs_filter, times_filter, amps_filter))
     except Exception as e:
         print(f'ERROR! [get_2d_peaks] Exception detail: {e}')
 
@@ -178,6 +198,8 @@ def generate_hashes(skeleton: FingerPrint,
         idx_freq = 0
         # times are in the second position of the tuples
         idx_time = 1
+        # amps are in the third position of the tuples
+        idx_amp = 2
 
         if PEAK_SORT:
             peaks.sort(key=itemgetter(1))
@@ -197,11 +219,28 @@ def generate_hashes(skeleton: FingerPrint,
                     t2 = peaks[i + j][idx_time]
                     t_delta = t2 - t1
 
+                    amp1 = peaks[i][idx_amp]
+                    amp2 = peaks[i + j][idx_amp]
+
+                    if freq1 > freq2:
+                        freq1, freq2 = freq2, freq1
+                        t1, t2 = t2, t1
+                        amp1, amp2 = amp2, amp1
+
+                    balance = 0
+
+                    if amp1 > amp2:
+                        balance = 1
+
+                    if t_delta in (0, 1):
+                        skeleton.search_dtmf(f1=freq1, f2=freq2, a1=amp1, a2=amp2, delta=t_delta)
+
                     if MIN_HASH_TIME_DELTA <= t_delta <= MAX_HASH_TIME_DELTA:
-                        hstr = f"{str(freq1)}|{str(freq2)}|{str(t_delta)}"
+                        hstr = f"{freq1}|{freq2}|{t_delta}|{balance}"
                         skeleton.add_hash_offset(hstr, t1)
                         skeleton.add_first_points(hstr, t1, freq1)
                         skeleton.add_second_points(hstr, t2, freq2)
+
         return skeleton
     except Exception as e:
         print(f'ERROR! [generate_hashes] Exception detail: {e}')

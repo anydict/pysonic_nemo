@@ -67,7 +67,7 @@ class Detector(object):
             self.templates[template_name] = Template(template_id=template_id,
                                                      template_name=template_name,
                                                      limit_samples=0,
-                                                     amplitudes=list(audio_data))
+                                                     amplitudes=audio_data.tolist())
             for tmp_hash in self.templates[template_name].fingerprint.hashes_offsets.keys():
                 if self.all_templates_hash.get(tmp_hash) is None:
                     self.all_templates_hash[tmp_hash] = [template_name]
@@ -77,12 +77,12 @@ class Detector(object):
                     self.all_templates_hash[tmp_hash].append(template_name)
 
         for template_name in self.templates.keys():
-            detect_result = self.analise_fingerprint(ac_print=self.templates[template_name].fingerprint,
-                                                     skip_template_name=self.templates[template_name].template_name,
-                                                     real_search=False)
-            if detect_result and detect_result[1] > 6700:
-                found_template, match_count = detect_result
-                self.log.warning(f"Found cross template: {template_name} >> {detect_result} "
+            found_template, match_count = self.analise_fingerprint(ac_print=self.templates[template_name].fingerprint,
+                                                                   skip_template_name=self.templates[
+                                                                       template_name].template_name,
+                                                                   real_search=False)
+            if found_template and match_count > 6700:
+                self.log.warning(f"Found cross template: {template_name} >> {found_template} {match_count} "
                                  f"hash_count_1={len(self.templates[template_name].fingerprint.hashes_offsets)} "
                                  f"hash_count_2={len(self.templates[found_template].fingerprint.hashes_offsets)} ")
 
@@ -187,7 +187,7 @@ class Detector(object):
     def analise_fingerprint(self,
                             ac_print: FingerPrint,
                             skip_template_name: str = '',
-                            real_search: bool = True) -> tuple[str, int] | None:
+                            real_search: bool = True) -> tuple[str, int] | tuple[None, None]:
         ac_tmp_hash_similar: dict[str, list[str]] = {}
         for ac_hash in ac_print.hashes_offsets.keys():
             if ac_hash in self.all_templates_hash.keys():
@@ -238,7 +238,7 @@ class Detector(object):
 
             return template_name, match_count
 
-        return None
+        return None, None
 
 
 if __name__ == "__main__":
