@@ -3,8 +3,7 @@ from typing import List, Tuple
 
 import matplotlib.mlab as mlab
 import numpy as np
-from scipy.ndimage import (generate_binary_structure,
-                           iterate_structure)
+from scipy.ndimage import generate_binary_structure, iterate_structure
 from scipy.ndimage import maximum_filter
 
 from src.config import (DEFAULT_SAMPLE_RATE,
@@ -231,9 +230,6 @@ def generate_hashes(skeleton: FingerPrint,
 
                     if amp1 > amp2:
                         balance = 1
-
-                    if t_delta in (0, 1):
-                        skeleton.search_dtmf(f1=freq1, f2=freq2, a1=amp1, a2=amp2, delta=t_delta)
 
                     if MIN_HASH_TIME_DELTA <= t_delta <= MAX_HASH_TIME_DELTA:
                         hstr = f"{freq1}|{freq2}|{t_delta}|{balance}"

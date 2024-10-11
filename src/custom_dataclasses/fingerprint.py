@@ -35,20 +35,6 @@ class FingerPrint(object):
         if _hash not in self.second_points:
             self.second_points[_hash] = (x, y)
 
-    def search_dtmf(self, f1: int, f2: int, a1: float, a2: float, delta: int) -> None:
-        if f1 > f2:
-            f1, f2 = f2, f1
-
-        if a1 / a2 < 0.9 or a1 / a2 > 1.1 or delta > 3:
-            return
-
-        if f1 in (17, 18) and f2 in (30, 31):
-            # print('DTMF_1', delta, f1, f2, a1, a2, a1 / a2)
-            self.dtmf = 1
-        elif f1 in (20, 21, 22) and f2 in (33, 34):
-            # print('DTMF_8', delta, f1, f2, a1, a2, a1 / a2)
-            self.dtmf = 8
-
     def save_print2png(self, print_name: str, print_folder: str = 'fingerprint_template'):
         if len(self.first_points) == 0:
             return
